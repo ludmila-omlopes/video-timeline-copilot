@@ -148,6 +148,18 @@ def timeline_duration(timeline: dict) -> float:
     return end
 
 
+def default_fcpxml_path(edl_path: Path, edl: dict | None = None) -> Path:
+    payload = edl or read_json(edl_path)
+    return edl_path.parent / f"{safe_filename(payload['project_name'], 'timeline')}.fcpxml"
+
+
+def write_fcpxml(edl_path: Path, out_path: Path) -> Path:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    tree = build_fcpxml(edl_path)
+    tree.write(out_path, encoding="utf-8", xml_declaration=True)
+    return out_path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export FCPXML from video-timeline-copilot EDL")
     parser.add_argument("edl", type=Path)
@@ -156,12 +168,10 @@ def main() -> None:
 
     edl_path = args.edl.resolve()
     edl = read_json(edl_path)
-    out_path = args.out or edl_path.parent / f"{safe_filename(edl['project_name'], 'timeline')}.fcpxml"
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path = args.out or default_fcpxml_path(edl_path, edl)
 
-    tree = build_fcpxml(edl_path)
-    tree.write(out_path, encoding="utf-8", xml_declaration=True)
-    print(f"FCPXML -> {out_path}")
+    result = write_fcpxml(edl_path, out_path)
+    print(f"FCPXML -> {result}")
 
 
 if __name__ == "__main__":

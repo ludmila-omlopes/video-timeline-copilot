@@ -100,12 +100,34 @@ there is ambiguity.
    vtc export-fcpxml /path/to/footage/edit/edl.json
    ```
 
+   If an FCPXML already exists and the user wants to keep updating the same XML
+   file path, use:
+
+   ```bash
+   vtc update-fcpxml /path/to/footage/edit/edl.json
+   ```
+
+   Use `--xml /path/to/file.fcpxml` when the existing XML is not the default
+   project-name path. This rewrites the XML file on disk; it does not live-sync
+   an already-imported Resolve timeline.
+
 9. Build Resolve project when external scripting is available:
 
    ```bash
    vtc resolve-env-check
    vtc build-resolve-project /path/to/footage/edit/edl.json
    ```
+
+   If the user already has the Resolve project open and wants to keep working
+   in that project, update the existing project instead:
+
+   ```bash
+   vtc update-resolve-timeline /path/to/footage/edit/edl.json --project "Existing Project"
+   ```
+
+   By default, this creates uniquely named replacement timelines and leaves old
+   timelines intact. Use `--replace-existing` only when the user explicitly
+   wants matching timeline names deleted and recreated.
 
 ## EDL Contract
 
@@ -158,6 +180,12 @@ DaVinci Resolve's scripting API is strongest at project creation, media import,
 timeline creation, timeline item property changes, markers, project export, and
 project archive. Subtitle automation varies by Resolve version. Always generate
 SRT as a stable handoff artifact even when trying to import subtitle tracks.
+
+`vtc update-resolve-timeline` works against an existing Resolve project. It
+rebuilds EDL timelines in that project; it does not live-edit individual clips
+inside the currently selected timeline. If `--replace-existing` is used and
+Resolve refuses to delete an active timeline, create a uniquely named timeline
+first or switch to another timeline before retrying.
 
 DaVinci Resolve Free may not expose external scripting. In that case, stop after
 validated EDL, SRT, and FCPXML generation and tell the user to import the FCPXML

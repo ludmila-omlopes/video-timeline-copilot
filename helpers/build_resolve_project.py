@@ -22,37 +22,57 @@ def fail(message: str) -> None:
     raise RuntimeError(message)
 
 
-def build_project(edl_path: Path) -> dict:
-    edl = read_json(edl_path)
-    footage_root = edl_path.parent.parent
-    resolve_out = edl_path.parent / "resolve"
-    resolve_out.mkdir(parents=True, exist_ok=True)
-
+def connect_resolve():
     dvr = load_resolve_module()
     resolve = dvr.scriptapp("Resolve")
     if not resolve:
         fail("Could not connect to DaVinci Resolve. Open Resolve and try again.")
+    return resolve
 
-    project_manager = resolve.GetProjectManager()
-    project_name = edl["project_name"]
 
-    existing = project_manager.LoadProject(project_name)
-    if existing:
-        fail(f"Project already exists or is loaded: {project_name}. Rename it or delete it manually.")
+def find_timeline(project, name: str):
+    count = int(project.GetTimelineCount() or 0)
+    for index in range(1, count + 1):
+        timeline = project.GetTimelineByIndex(index)
+        if timeline and timeline.GetName() == name:
+            return timeline
+    return None
 
-    project = project_manager.CreateProject(project_name)
-    if not project:
-        fail(f"Could not create project: {project_name}")
 
+def unique_timeline_name(project, base_name: str) -> str:
+    if not find_timeline(project, base_name):
+        return base_name
+    index = 2
+    while find_timeline(project, f"{base_name} {index}"):
+        index += 1
+    return f"{base_name} {index}"
+
+
+def delete_timeline(project, media_pool, name: str) -> bool:
+    timeline = find_timeline(project, name)
+    if not timeline:
+        return False
+    deleted = media_pool.DeleteTimelines([timeline])
+    if not deleted:
+        fail(f"Could not delete existing Resolve timeline: {name}")
+    return True
+
+
+def create_timelines_from_edl(project, resolve, edl: dict, footage_root: Path, *, replace_existing: bool = False) -> list[str]:
     fps = float(edl["fps"])
-    project.SetSetting("timelineFrameRate", str(int(fps) if fps.is_integer() else fps))
-
     media_storage = resolve.GetMediaStorage()
     media_pool = project.GetMediaPool()
     imported: dict[str, object] = {}
     created_timelines = []
 
     for timeline_spec in edl["timelines"]:
+        requested_name = timeline_spec["name"]
+        timeline_name = requested_name
+        if replace_existing:
+            delete_timeline(project, media_pool, requested_name)
+        else:
+            timeline_name = unique_timeline_name(project, requested_name)
+
         width, height = timeline_spec["resolution"]
         project.SetSetting("timelineResolutionWidth", str(width))
         project.SetSetting("timelineResolutionHeight", str(height))
@@ -86,11 +106,11 @@ def build_project(edl_path: Path) -> dict:
                 }
             )
 
-        timeline = media_pool.CreateTimelineFromClips(timeline_spec["name"], clip_infos)
+        timeline = media_pool.CreateTimelineFromClips(timeline_name, clip_infos)
         if not timeline:
-            fail(f"Could not create timeline: {timeline_spec['name']}")
+            fail(f"Could not create timeline: {timeline_name}")
         project.SetCurrentTimeline(timeline)
-        created_timelines.append(timeline_spec["name"])
+        created_timelines.append(timeline_name)
 
         video_items = timeline.GetItemListInTrack("video", 1) or []
         for index, timeline_item in enumerate(video_items):
@@ -113,6 +133,33 @@ def build_project(edl_path: Path) -> dict:
                 name = item.get("beat") or item.get("quote") or "Edit"
                 note = item.get("reason") or item.get("quote") or ""
                 timeline.AddMarker(frame, "Blue", name, note, 1)
+
+    return created_timelines
+
+
+def build_project(edl_path: Path) -> dict:
+    edl = read_json(edl_path)
+    footage_root = edl_path.parent.parent
+    resolve_out = edl_path.parent / "resolve"
+    resolve_out.mkdir(parents=True, exist_ok=True)
+
+    resolve = connect_resolve()
+
+    project_manager = resolve.GetProjectManager()
+    project_name = edl["project_name"]
+
+    existing = project_manager.LoadProject(project_name)
+    if existing:
+        fail(f"Project already exists or is loaded: {project_name}. Rename it or delete it manually.")
+
+    project = project_manager.CreateProject(project_name)
+    if not project:
+        fail(f"Could not create project: {project_name}")
+
+    fps = float(edl["fps"])
+    project.SetSetting("timelineFrameRate", str(int(fps) if fps.is_integer() else fps))
+
+    created_timelines = create_timelines_from_edl(project, resolve, edl, footage_root, replace_existing=False)
 
     if not project_manager.SaveProject():
         fail("Resolve did not save the project successfully.")

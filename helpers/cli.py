@@ -10,16 +10,19 @@ COMMANDS = {
     "validate-edl": ("helpers.validate_edl", "Validate an EDL JSON file"),
     "export-srt": ("helpers.export_srt", "Generate SRT subtitles from an EDL"),
     "export-fcpxml": ("helpers.export_fcpxml", "Export FCPXML from an EDL"),
+    "update-fcpxml": ("helpers.update_fcpxml", "Update an existing FCPXML file in place"),
     "resolve-env-check": ("helpers.resolve_env_check", "Check DaVinci Resolve scripting access"),
     "build-resolve-project": ("helpers.build_resolve_project", "Build a DaVinci Resolve project"),
+    "update-resolve-timeline": ("helpers.update_resolve_timeline", "Create or replace timelines in an existing Resolve project"),
 }
 
 
 def print_help() -> None:
     print("Usage: vtc <command> [args]\n")
     print("Commands:")
+    width = max(len(name) for name in COMMANDS)
     for name, (_, description) in COMMANDS.items():
-        print(f"  {name:<22} {description}")
+        print(f"  {name:<{width}}  {description}")
     print("\nRun 'vtc <command> --help' for command-specific options.")
 
 

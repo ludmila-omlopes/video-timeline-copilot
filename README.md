@@ -158,6 +158,19 @@ vtc export-srt .\my-video\edit\edl.json
 vtc export-fcpxml .\my-video\edit\edl.json
 ```
 
+If the FCPXML has already been created and you want to keep updating that same
+file instead of choosing new output names, run:
+
+```powershell
+vtc update-fcpxml .\my-video\edit\edl.json
+```
+
+For a custom XML path:
+
+```powershell
+vtc update-fcpxml .\my-video\edit\edl.json --xml .\my-video\edit\current.fcpxml
+```
+
 For Resolve Free, import the generated `.fcpxml` manually:
 
 ```text
@@ -192,6 +205,29 @@ Then:
 vtc resolve-env-check
 vtc build-resolve-project .\my-video\edit\edl.json
 ```
+
+To keep working inside an existing Resolve project that is already open, update
+that project instead of creating a new one:
+
+```powershell
+vtc update-resolve-timeline .\my-video\edit\edl.json --project "Existing Project"
+```
+
+By default this creates uniquely named timelines when a timeline with the same
+name already exists. To intentionally replace matching timelines:
+
+```powershell
+vtc update-resolve-timeline .\my-video\edit\edl.json --project "Existing Project" --replace-existing
+```
+
+This rebuilds timelines from the EDL; it does not live-patch individual clips
+inside the selected timeline. If the existing Resolve project frame rate differs
+from the EDL fps, the command stops unless `--allow-fps-mismatch` is provided.
+
+Updating an FCPXML file on disk does not make Resolve refresh a timeline that
+was already imported from that XML. Resolve treats XML import as a timeline
+snapshot, so reimport the updated XML or use `vtc update-resolve-timeline` when
+Resolve scripting is available.
 
 If `vtc resolve-env-check` reports `api_import_ok_resolve_not_connected` and
 your Resolve preferences do not show external scripting options, use FCPXML

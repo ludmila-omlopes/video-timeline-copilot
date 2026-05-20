@@ -59,9 +59,16 @@ into DaVinci Resolve scripting API calls:
 - export `.drp`
 - archive `.dra`
 
+`helpers/update_resolve_timeline.py` uses the same EDL-to-timeline builder
+against an existing Resolve project. It can either create uniquely named updated
+timelines or delete and recreate matching timelines when requested. This keeps
+iterative agent edits possible while Resolve is open, without treating the
+currently selected timeline as mutable source of truth.
+
 Future backends should read the same EDL:
 
 - `export_fcpxml.py`
+- `update_fcpxml.py`
 - `export_otio.py`
 - `export_edl.py`
 - `build_premiere_project.py`
@@ -70,4 +77,3 @@ Future backends should read the same EDL:
 
 The model should not be the executor. The model produces structured edit intent.
 Helpers execute deterministic transformations.
-
