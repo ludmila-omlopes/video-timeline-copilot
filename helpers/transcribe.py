@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 
@@ -30,25 +31,46 @@ def serialize_segments(segments) -> list[dict]:
     return output
 
 
-def print_progress(current: float, total: float) -> None:
+def print_status(message: str) -> None:
+    print(message, flush=True)
+
+
+def progress_line(current: float, total: float) -> str | None:
     if total <= 0:
-        return
+        return None
     width = 30
     ratio = min(max(current / total, 0.0), 1.0)
     filled = int(width * ratio)
     bar = "#" * filled + "-" * (width - filled)
     percent = ratio * 100
-    print(f"\rtranscribing [{bar}] {percent:5.1f}% ({current:0.1f}s/{total:0.1f}s)", end="", file=sys.stderr)
+    return f"transcribing [{bar}] {percent:5.1f}% ({current:0.1f}s/{total:0.1f}s)"
 
 
-def collect_segments_with_progress(segments_iter, duration: float) -> list:
+def collect_segments_with_progress(segments_iter, duration: float, *, interval_seconds: float = 10.0) -> list:
     segments = []
-    print_progress(0.0, duration)
+    last_emit = 0.0
+    last_percent = -1
+
+    initial = progress_line(0.0, duration)
+    if initial:
+        print_status(initial)
+
     for segment in segments_iter:
         segments.append(segment)
-        print_progress(float(segment.end or 0.0), duration)
-    print_progress(duration, duration)
-    print(file=sys.stderr)
+        current = float(segment.end or 0.0)
+        percent = int((current / duration) * 100) if duration > 0 else 0
+        now = time.monotonic()
+        should_emit = now - last_emit >= interval_seconds or percent >= last_percent + 5
+        if should_emit:
+            line = progress_line(current, duration)
+            if line:
+                print_status(line)
+            last_emit = now
+            last_percent = percent
+
+    final = progress_line(duration, duration)
+    if final:
+        print_status(final)
     return segments
 
 
@@ -88,13 +110,19 @@ def main() -> None:
         print(f"cached transcript -> {out_path}")
         return
 
+    print_status(f"loading faster-whisper model '{args.model}' on device '{args.device}'")
     model = WhisperModel(args.model, device=args.device, compute_type=args.compute_type)
+    print_status(f"model loaded; starting transcription for {video.name}")
     segments_iter, info = model.transcribe(
         str(video),
         language=args.language,
         word_timestamps=True,
         vad_filter=not args.no_vad,
         beam_size=5,
+    )
+    print_status(
+        f"detected language={info.language} probability={info.language_probability:0.2f}; "
+        f"duration={float(info.duration or 0.0):0.1f}s"
     )
     raw_segments = collect_segments_with_progress(segments_iter, float(info.duration or 0.0))
     segments = serialize_segments(raw_segments)
