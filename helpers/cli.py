@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+import sys
+
+
+COMMANDS = {
+    "inventory": ("helpers.inventory", "Index local video media"),
+    "transcribe": ("helpers.transcribe", "Transcribe one video with faster-whisper"),
+    "pack-transcripts": ("helpers.pack_transcripts", "Pack transcript JSON files"),
+    "validate-edl": ("helpers.validate_edl", "Validate an EDL JSON file"),
+    "export-srt": ("helpers.export_srt", "Generate SRT subtitles from an EDL"),
+    "export-fcpxml": ("helpers.export_fcpxml", "Export FCPXML from an EDL"),
+    "resolve-env-check": ("helpers.resolve_env_check", "Check DaVinci Resolve scripting access"),
+    "build-resolve-project": ("helpers.build_resolve_project", "Build a DaVinci Resolve project"),
+}
+
+
+def print_help() -> None:
+    print("Usage: vtc <command> [args]\n")
+    print("Commands:")
+    for name, (_, description) in COMMANDS.items():
+        print(f"  {name:<22} {description}")
+    print("\nRun 'vtc <command> --help' for command-specific options.")
+
+
+def main() -> None:
+    if len(sys.argv) < 2 or sys.argv[1] in {"-h", "--help"}:
+        print_help()
+        return
+
+    command = sys.argv[1]
+    target = COMMANDS.get(command)
+    if target is None:
+        print(f"unknown command: {command}", file=sys.stderr)
+        print("run 'vtc --help' to see available commands", file=sys.stderr)
+        raise SystemExit(2)
+
+    module_name, _ = target
+    module = __import__(module_name, fromlist=["main"])
+    sys.argv = [f"vtc {command}", *sys.argv[2:]]
+    module.main()
+
+
+if __name__ == "__main__":
+    main()
