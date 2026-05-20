@@ -26,6 +26,24 @@ explicitly asks for a render.
 9. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
    and FCPXML generation and tell the user to import the FCPXML manually.
 
+## CLI Invocation
+
+Use the `vtc` command when it is available on `PATH`. If `vtc` is not found,
+run the skill-local executable instead:
+
+```powershell
+$env:USERPROFILE\.codex\skills\video-timeline-copilot\.venv\Scripts\vtc.exe
+```
+
+On macOS/Linux, the equivalent fallback is:
+
+```bash
+~/.codex/skills/video-timeline-copilot/.venv/bin/vtc
+```
+
+Do not stop just because the bare `vtc` command is missing; locate the skill
+virtual environment and use its executable.
+
 ## User-Facing Request Handling
 
 When the user asks for a video edit from a folder, take ownership of the
