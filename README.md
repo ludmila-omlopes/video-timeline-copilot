@@ -14,6 +14,8 @@ The primary output is an editable timeline, not a flattened MP4.
 - Transcribes footage with `faster-whisper` and word timestamps.
 - Packs transcripts into `edit/takes_packed.md`, the main reading surface for
   the agent.
+- Flags likely repeated takes in the packed transcript so Codex can keep the
+  cleanest delivery instead of cutting in multiple versions of the same line.
 - Lets Codex reason about the edit and write `edit/edl.json`.
 - Validates the EDL before any editor-specific export.
 - Exports `.srt` subtitles.
@@ -157,6 +159,11 @@ vtc validate-edl .\my-video\edit\edl.json
 vtc export-srt .\my-video\edit\edl.json
 vtc export-fcpxml .\my-video\edit\edl.json
 ```
+
+`vtc pack-transcripts` annotates nearby repeated deliveries as
+`possible repeated take`. Those notes are meant for the editing pass: keep only
+the cleanest complete version of a restarted sentence or repeated point unless
+the repetition is intentionally part of the video.
 
 If the FCPXML has already been created and you want to keep updating that same
 file instead of choosing new output names, run:

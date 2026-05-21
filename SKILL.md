@@ -25,6 +25,9 @@ explicitly asks for a render.
 8. Always export SRT and FCPXML after validation.
 9. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
    and FCPXML generation and tell the user to import the FCPXML manually.
+10. Repeated delivery, false starts, and self-corrections are not useful
+    story beats. When adjacent transcript phrases restate the same idea, keep
+    only the cleanest complete version and discard the earlier/incomplete take.
 
 ## CLI Invocation
 
@@ -65,11 +68,20 @@ For simple requests, choose conservative defaults:
 
 - "remove silence" / "remove silent parts": keep speech ranges based on word
   timestamp gaps, cut gaps longer than about 0.8 seconds, and add about 0.15
-  seconds of padding before and after speech ranges.
+  seconds of padding before and after speech ranges. Also collapse repeated
+  takes: if the speaker restarts the same sentence or repeats the same point
+  nearby, include only one version.
 - "short edit" without a duration: create a 10-30 second rough cut depending on
   source length.
 - "highlight" / "best moments": prioritize clear, self-contained transcript
-  phrases and avoid isolated filler words.
+  phrases and avoid isolated filler words, false starts, and duplicate
+  deliveries.
+
+Treat `takes_packed.md` notes such as `possible repeated take` as warnings that
+the marked phrase probably duplicates an earlier attempt. Do not place both
+versions on the timeline unless the user's request explicitly asks to show the
+repetition. Prefer the more complete, fluent, and contextually useful delivery;
+often that is the later take after the speaker restarted.
 
 If an edit strategy could materially change the user's intended story, briefly
 state the strategy before writing the EDL. For straightforward mechanical

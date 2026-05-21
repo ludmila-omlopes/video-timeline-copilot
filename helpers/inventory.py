@@ -60,6 +60,8 @@ def ffprobe(path: Path) -> dict:
         "height": int(video_stream.get("height", 0) or 0),
         "video_codec": video_stream.get("codec_name"),
         "audio_codec": audio_stream.get("codec_name"),
+        "audio_channels": int(audio_stream.get("channels", 0) or 0),
+        "audio_rate": int(audio_stream.get("sample_rate", 0) or 0),
         "avg_frame_rate": video_stream.get("avg_frame_rate"),
     }
 

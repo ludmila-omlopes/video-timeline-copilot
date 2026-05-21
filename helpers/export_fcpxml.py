@@ -9,7 +9,14 @@ from helpers.common import ensure_within, read_json, resolve_relative, safe_file
 
 
 def fcpx_time(seconds: float, fps: float) -> str:
-    frames = int(round(seconds * fps))
+    return fcpx_time_from_frames(fcpx_frames(seconds, fps), fps)
+
+
+def fcpx_frames(seconds: float, fps: float) -> int:
+    return int(round(seconds * fps))
+
+
+def fcpx_time_from_frames(frames: int, fps: float) -> str:
     rate = int(fps) if float(fps).is_integer() else fps
     return f"{frames}/{rate}s"
 
@@ -23,19 +30,31 @@ def file_url(path: Path) -> str:
     return path.resolve().as_uri()
 
 
-def add_asset(resources: ET.Element, asset_id: str, path: Path, duration: str, format_id: str) -> None:
+def add_asset(
+    resources: ET.Element,
+    asset_id: str,
+    path: Path,
+    duration: str,
+    format_id: str,
+    media_info: dict | None = None,
+) -> None:
+    attrs = {
+        "id": asset_id,
+        "name": path.stem,
+        "start": "0s",
+        "duration": duration,
+        "hasVideo": "1",
+        "hasAudio": "1",
+        "format": format_id,
+        "videoSources": "1",
+        "audioSources": "1",
+        "audioChannels": str((media_info or {}).get("audio_channels") or 2),
+        "audioRate": str((media_info or {}).get("audio_rate") or 48000),
+    }
     asset = ET.SubElement(
         resources,
         "asset",
-        {
-            "id": asset_id,
-            "name": path.stem,
-            "start": "0s",
-            "duration": duration,
-            "hasVideo": "1",
-            "hasAudio": "1",
-            "format": format_id,
-        },
+        attrs,
     )
     ET.SubElement(asset, "media-rep", {"kind": "original-media", "src": file_url(path)})
 
@@ -44,6 +63,7 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
     edl = read_json(edl_path)
     footage_root = edl_path.parent.parent
     fps = float(edl["fps"])
+    media_by_path = load_media_index(edl_path.parent, footage_root)
 
     fcpxml = ET.Element("fcpxml", {"version": "1.10"})
     resources = ET.SubElement(fcpxml, "resources")
@@ -79,7 +99,14 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                 (float(item["source_end"]) for item in timeline["ranges"] if item["source"] == source_id),
                 default=0.0,
             )
-            add_asset(resources, asset_id, resolved, fcpx_time(longest_duration, fps), formats[format_key])
+            add_asset(
+                resources,
+                asset_id,
+                resolved,
+                fcpx_time(longest_duration, fps),
+                formats[format_key],
+                media_by_path.get(resolved),
+            )
 
     library = ET.SubElement(fcpxml, "library")
     event = ET.SubElement(library, "event", {"name": edl["project_name"]})
@@ -95,6 +122,8 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                 "duration": fcpx_time(timeline_duration(timeline), fps),
                 "tcStart": "0s",
                 "tcFormat": "NDF",
+                "audioLayout": "stereo",
+                "audioRate": "48k",
             },
         )
         spine = ET.SubElement(sequence, "spine")
@@ -102,16 +131,18 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
 
         for index, item in enumerate(sorted(timeline["ranges"], key=lambda r: float(r.get("record_start", 0)))):
             record_start = float(item.get("record_start", cursor))
-            if record_start > cursor:
-                gap_duration = record_start - cursor
+            cursor_frames = fcpx_frames(cursor, fps)
+            record_start_frames = fcpx_frames(record_start, fps)
+            if record_start_frames > cursor_frames:
+                gap_duration_frames = record_start_frames - cursor_frames
                 ET.SubElement(
                     spine,
                     "gap",
                     {
                         "name": "Gap",
-                        "offset": fcpx_time(cursor, fps),
+                        "offset": fcpx_time_from_frames(cursor_frames, fps),
                         "start": "0s",
-                        "duration": fcpx_time(gap_duration, fps),
+                        "duration": fcpx_time_from_frames(gap_duration_frames, fps),
                     },
                 )
                 cursor = record_start
@@ -119,6 +150,9 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
             source_start = float(item["source_start"])
             source_end = float(item["source_end"])
             duration = source_end - source_start
+            duration_frames = fcpx_frames(duration, fps)
+            if duration_frames <= 0:
+                raise ValueError(f"range {index + 1} duration rounds to zero frames")
             asset_id, _ = assets[item["source"]]
             clip_name = item.get("beat") or item.get("quote") or f"Clip {index + 1}"
             clip = ET.SubElement(
@@ -129,7 +163,11 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                     "ref": asset_id,
                     "offset": fcpx_time(record_start, fps),
                     "start": fcpx_time(source_start, fps),
-                    "duration": fcpx_time(duration, fps),
+                    "duration": fcpx_time_from_frames(duration_frames, fps),
+                    "format": formats[(int(width), int(height))],
+                    "srcEnable": "all",
+                    "audioRole": "dialogue",
+                    "videoRole": "video",
                 },
             )
             if item.get("reason"):
@@ -151,6 +189,20 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
 
     ET.indent(fcpxml, space="  ")
     return ET.ElementTree(fcpxml)
+
+
+def load_media_index(edit_dir: Path, footage_root: Path) -> dict[Path, dict]:
+    index_path = edit_dir / "media_index.json"
+    if not index_path.exists():
+        return {}
+
+    media_by_path = {}
+    for item in read_json(index_path).get("media", []):
+        item_path = item.get("path")
+        if not item_path:
+            continue
+        media_by_path[resolve_relative(item_path, footage_root).resolve()] = item
+    return media_by_path
 
 
 def timeline_duration(timeline: dict) -> float:
