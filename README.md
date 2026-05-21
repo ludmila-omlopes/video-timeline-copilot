@@ -16,8 +16,11 @@ The primary output is an editable timeline, not a flattened MP4.
   the agent.
 - Flags likely repeated takes in the packed transcript so Codex can keep the
   cleanest delivery instead of cutting in multiple versions of the same line.
+- Creates deterministic draft silence-cut timelines with configurable thresholds
+  and transcript-aware word-boundary snapping.
 - Lets Codex reason about the edit and write `edit/edl.json`.
-- Validates the EDL before any editor-specific export.
+- Validates the EDL before any editor-specific export and warns about obvious
+  cut-craft problems when transcript timings are available.
 - Exports `.srt` subtitles.
 - Exports `.fcpxml` for manual import into Resolve Free, Final Cut Pro, or
   other tools that support FCPXML.
@@ -155,6 +158,7 @@ my-video/edit/
 vtc inventory .\my-video --edit-dir .\my-video\edit
 vtc transcribe .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc pack-transcripts --edit-dir .\my-video\edit
+vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc validate-edl .\my-video\edit\edl.json
 vtc export-srt .\my-video\edit\edl.json
 vtc export-fcpxml .\my-video\edit\edl.json
@@ -164,6 +168,27 @@ vtc export-fcpxml .\my-video\edit\edl.json
 `possible repeated take`. Those notes are meant for the editing pass: keep only
 the cleanest complete version of a restarted sentence or repeated point unless
 the repetition is intentionally part of the video.
+
+`vtc draft-silence-cut` creates an editable rough cut by detecting silence with
+FFmpeg and writing kept ranges into `edit/edl.json`. Defaults are conservative:
+
+```powershell
+vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit --style documentary
+```
+
+Useful controls:
+
+- `--noise -35dB`: silence threshold passed to FFmpeg `silencedetect`.
+- `--min-silence 0.7`: minimum sustained silence before a gap is removed.
+- `--padding 0.25`: pre/post-roll kept around detected activity.
+- `--min-segment 0.8`: discard tiny kept fragments.
+- `--merge-gap 0.35`: merge nearby kept ranges.
+- `--style social|highlight|documentary|longform`: pacing preset.
+- `--no-word-snap`: skip transcript word-boundary adjustment.
+
+When `edit/transcripts/<source>.json` exists, the helper adjusts cut points to
+word timings so draft silence cuts do not trim through spoken words. See
+[docs/audio-analysis.md](docs/audio-analysis.md) for detector tradeoffs.
 
 If the FCPXML has already been created and you want to keep updating that same
 file instead of choosing new output names, run:
@@ -278,11 +303,18 @@ optional transform metadata.
 2. Transcript-first editing keeps the agent focused on meaningful cut points.
 3. The LLM writes structured edit intent; helper scripts perform deterministic
    file generation.
-4. Validate before exporting.
-5. Keep all per-session outputs in the footage folder's `edit/` directory.
-6. When Resolve scripting is unavailable, produce SRT and FCPXML instead of
+4. Silence removal is a draft timeline generator, not the final creative edit.
+5. Validate before exporting.
+6. Keep all per-session outputs in the footage folder's `edit/` directory.
+7. When Resolve scripting is unavailable, produce SRT and FCPXML instead of
    blocking the workflow.
 
 See [SKILL.md](SKILL.md) for Codex usage rules, [install.md](install.md) for
-setup details, [docs/architecture.md](docs/architecture.md) for internals, and
+setup details, [docs/architecture.md](docs/architecture.md) for internals,
+[docs/audio-analysis.md](docs/audio-analysis.md) for silence-cut behavior, and
 [docs/e2e-test.md](docs/e2e-test.md) for release validation.
+
+## Contact
+
+Questions, feedback, or ideas for the project? Reach me on X/Twitter:
+[@ludylops](https://x.com/ludylops)

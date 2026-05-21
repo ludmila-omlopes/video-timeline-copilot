@@ -68,9 +68,11 @@ For simple requests, choose conservative defaults:
 
 - "remove silence" / "remove silent parts": keep speech ranges based on word
   timestamp gaps, cut gaps longer than about 0.8 seconds, and add about 0.15
-  seconds of padding before and after speech ranges. Also collapse repeated
-  takes: if the speaker restarts the same sentence or repeats the same point
-  nearby, include only one version.
+  seconds of padding before and after speech ranges. Prefer
+  `vtc draft-silence-cut` for the first deterministic pass when the user wants
+  mechanical silence removal, then refine the generated EDL if needed. Also
+  collapse repeated takes: if the speaker restarts the same sentence or repeats
+  the same point nearby, include only one version.
 - "short edit" without a duration: create a 10-30 second rough cut depending on
   source length.
 - "highlight" / "best moments": prioritize clear, self-contained transcript
@@ -110,7 +112,15 @@ there is ambiguity.
 
 4. Read `edit/takes_packed.md` and any needed transcript JSON files.
 
-5. Write `edit/edl.json` from the user's requested outcome.
+5. Write `edit/edl.json` from the user's requested outcome. For draft silence
+   removal, use the deterministic helper:
+
+   ```bash
+   vtc draft-silence-cut /path/to/footage/raw/interview.mp4 --edit-dir /path/to/footage/edit --style documentary
+   ```
+
+   Then inspect/refine the generated EDL when the request requires more than
+   mechanical silence removal.
 
 6. Validate:
 
@@ -203,6 +213,23 @@ markers.
   ]
 }
 ```
+
+## Cut Craft Rules
+
+By default, place cuts on complete word, phrase, sentence, beat, pause, or clear
+visual transition boundaries. Avoid cutting through words, syllables, breaths,
+and incomplete phrases unless the user explicitly asks for a deliberately
+aggressive or stylized edit. Prefer the cleanest complete delivery when nearby
+phrases repeat the same idea.
+
+For tight social edits, remove more dead air but preserve word starts/ends and
+avoid creating tiny record gaps. For documentary and long-form edits, preserve
+more natural pauses and avoid rapid jump cuts unless the visual continuity is
+acceptable. For highlights, favor self-contained phrases and avoid isolated
+filler words.
+
+Always run `vtc validate-edl` before export. When transcript timings exist, the
+validator warns if a source cut appears to land inside a spoken word.
 
 ## Resolve Caveats
 

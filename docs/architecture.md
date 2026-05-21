@@ -20,6 +20,11 @@ output is cached in `edit/transcripts/`.
 `edit/takes_packed.md`, which is the primary surface the agent reads when
 choosing cuts.
 
+`helpers/draft_silence_cut.py` creates a deterministic rough-cut EDL from audio
+activity. It uses FFmpeg `silencedetect` as the baseline detector and uses
+cached transcript word timings, when present, to move cut points away from
+spoken-word interiors.
+
 ### 3. Intent Layer
 
 The agent writes `edit/edl.json`. This is the durable edit contract.
@@ -41,6 +46,8 @@ target multiple backends later. Today it supports:
 ### 4. Validation Layer
 
 `helpers/validate_edl.py` checks the EDL before any editor-specific backend runs.
+It also emits cut-quality warnings, such as transcript-backed cuts that appear
+to land inside words, without turning those warnings into hard schema errors.
 
 Validation is deliberately separate from Resolve so offline workflows still get
 useful feedback.

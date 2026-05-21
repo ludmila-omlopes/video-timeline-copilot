@@ -7,6 +7,7 @@ COMMANDS = {
     "inventory": ("helpers.inventory", "Index local video media"),
     "transcribe": ("helpers.transcribe", "Transcribe one video with faster-whisper"),
     "pack-transcripts": ("helpers.pack_transcripts", "Pack transcript JSON files"),
+    "draft-silence-cut": ("helpers.draft_silence_cut", "Create a draft EDL by removing detected silence"),
     "validate-edl": ("helpers.validate_edl", "Validate an EDL JSON file"),
     "export-srt": ("helpers.export_srt", "Generate SRT subtitles from an EDL"),
     "export-fcpxml": ("helpers.export_fcpxml", "Export FCPXML from an EDL"),
