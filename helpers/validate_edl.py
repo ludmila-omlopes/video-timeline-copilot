@@ -55,6 +55,9 @@ def validate(edl_path: Path) -> list[str]:
             continue
         for range_index, item in enumerate(ranges):
             item_prefix = f"{prefix}.ranges[{range_index}]"
+            media_type = item.get("media_type", item.get("kind", "av"))
+            if media_type not in ("av", "audio_video", None):
+                errors.append(f"{item_prefix}.media_type must be av; audio-only/video-only ranges are not supported")
             if item.get("source") not in sources:
                 errors.append(f"{item_prefix}.source must reference a known source")
             start = float(item.get("source_start", -1))

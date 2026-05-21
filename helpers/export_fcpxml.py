@@ -23,7 +23,7 @@ def file_url(path: Path) -> str:
     return path.resolve().as_uri()
 
 
-def add_asset(resources: ET.Element, asset_id: str, path: Path, duration: str) -> None:
+def add_asset(resources: ET.Element, asset_id: str, path: Path, duration: str, format_id: str) -> None:
     asset = ET.SubElement(
         resources,
         "asset",
@@ -34,6 +34,7 @@ def add_asset(resources: ET.Element, asset_id: str, path: Path, duration: str) -
             "duration": duration,
             "hasVideo": "1",
             "hasAudio": "1",
+            "format": format_id,
         },
     )
     ET.SubElement(asset, "media-rep", {"kind": "original-media", "src": file_url(path)})
@@ -78,7 +79,7 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                 (float(item["source_end"]) for item in timeline["ranges"] if item["source"] == source_id),
                 default=0.0,
             )
-            add_asset(resources, asset_id, resolved, fcpx_time(longest_duration, fps))
+            add_asset(resources, asset_id, resolved, fcpx_time(longest_duration, fps), formats[format_key])
 
     library = ET.SubElement(fcpxml, "library")
     event = ET.SubElement(library, "event", {"name": edl["project_name"]})
@@ -133,6 +134,19 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
             )
             if item.get("reason"):
                 ET.SubElement(clip, "note").text = str(item["reason"])
+            transform = item.get("transform") or {}
+            zoom = float(transform.get("zoom", 1.0))
+            pan = float(transform.get("pan", 0.0))
+            tilt = float(transform.get("tilt", 0.0))
+            if zoom != 1.0 or pan != 0.0 or tilt != 0.0:
+                ET.SubElement(
+                    clip,
+                    "adjust-transform",
+                    {
+                        "position": f"{pan:.3f} {tilt:.3f}",
+                        "scale": f"{zoom:.3f} {zoom:.3f}",
+                    },
+                )
             cursor = max(cursor, record_start + duration)
 
     ET.indent(fcpxml, space="  ")
