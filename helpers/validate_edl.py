@@ -7,6 +7,31 @@ from pathlib import Path
 from helpers.common import ensure_within, read_json, resolve_relative
 
 
+def load_transcript_words(edit_dir: Path, source_path: Path) -> list[dict]:
+    transcript_path = edit_dir / "transcripts" / f"{source_path.stem}.json"
+    if not transcript_path.exists():
+        return []
+    try:
+        payload = read_json(transcript_path)
+    except Exception:
+        return []
+    words = []
+    for word in payload.get("words", []):
+        start = word.get("start")
+        end = word.get("end")
+        if start is None or end is None:
+            continue
+        words.append({"start": float(start), "end": float(end), "text": word.get("text", "")})
+    return words
+
+
+def cut_inside_word(cut_time: float, words: list[dict], tolerance: float = 0.025) -> dict | None:
+    for word in words:
+        if word["start"] + tolerance < cut_time < word["end"] - tolerance:
+            return word
+    return None
+
+
 def validate(edl_path: Path) -> list[str]:
     errors = []
     edl = read_json(edl_path)
@@ -72,6 +97,52 @@ def validate(edl_path: Path) -> list[str]:
     return errors
 
 
+def cut_quality_warnings(edl_path: Path) -> list[str]:
+    warnings = []
+    edl = read_json(edl_path)
+    root = edl_path.parent.parent
+    edit_dir = edl_path.parent
+
+    for timeline_index, timeline in enumerate(edl.get("timelines") or []):
+        sources = timeline.get("sources", {})
+        words_by_source = {}
+        for source_id, source_path in sources.items():
+            resolved = resolve_relative(source_path, root)
+            words_by_source[source_id] = load_transcript_words(edit_dir, resolved)
+
+        previous_by_track: dict[int, dict] = {}
+        ranges = sorted(timeline.get("ranges") or [], key=lambda item: float(item.get("record_start", 0)))
+        for range_index, item in enumerate(ranges):
+            source_id = item.get("source")
+            words = words_by_source.get(source_id, [])
+            if words:
+                for key in ("source_start", "source_end"):
+                    cut = float(item.get(key, 0))
+                    word = cut_inside_word(cut, words)
+                    if word:
+                        warnings.append(
+                            f"timelines[{timeline_index}].ranges[{range_index}].{key} cuts inside word "
+                            f"{word.get('text', '').strip()!r} ({word['start']:.3f}-{word['end']:.3f})"
+                        )
+
+            track = int(item.get("track", 1))
+            previous = previous_by_track.get(track)
+            if previous is not None:
+                gap = float(item.get("record_start", 0)) - (
+                    float(previous.get("record_start", 0))
+                    + float(previous.get("source_end", 0))
+                    - float(previous.get("source_start", 0))
+                )
+                if 0.0 < gap < 0.08:
+                    warnings.append(
+                        f"timelines[{timeline_index}].ranges[{range_index}] leaves a very short "
+                        f"{gap:.3f}s record gap; consider closing it or making the pause intentional"
+                    )
+            previous_by_track[track] = item
+
+    return warnings
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate video-timeline-copilot EDL JSON")
     parser.add_argument("edl", type=Path)
@@ -82,6 +153,8 @@ def main() -> None:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
         raise SystemExit(1)
+    for warning in cut_quality_warnings(args.edl.resolve()):
+        print(f"WARNING: {warning}")
     print(f"valid EDL: {args.edl}")
 
 

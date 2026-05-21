@@ -25,6 +25,9 @@ explicitly asks for a render.
 8. Always export SRT and FCPXML after validation.
 9. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
    and FCPXML generation and tell the user to import the FCPXML manually.
+10. Repeated delivery, false starts, and self-corrections are not useful
+    story beats. When adjacent transcript phrases restate the same idea, keep
+    only the cleanest complete version and discard the earlier/incomplete take.
 
 ## CLI Invocation
 
@@ -65,11 +68,22 @@ For simple requests, choose conservative defaults:
 
 - "remove silence" / "remove silent parts": keep speech ranges based on word
   timestamp gaps, cut gaps longer than about 0.8 seconds, and add about 0.15
-  seconds of padding before and after speech ranges.
+  seconds of padding before and after speech ranges. Prefer
+  `vtc draft-silence-cut` for the first deterministic pass when the user wants
+  mechanical silence removal, then refine the generated EDL if needed. Also
+  collapse repeated takes: if the speaker restarts the same sentence or repeats
+  the same point nearby, include only one version.
 - "short edit" without a duration: create a 10-30 second rough cut depending on
   source length.
 - "highlight" / "best moments": prioritize clear, self-contained transcript
-  phrases and avoid isolated filler words.
+  phrases and avoid isolated filler words, false starts, and duplicate
+  deliveries.
+
+Treat `takes_packed.md` notes such as `possible repeated take` as warnings that
+the marked phrase probably duplicates an earlier attempt. Do not place both
+versions on the timeline unless the user's request explicitly asks to show the
+repetition. Prefer the more complete, fluent, and contextually useful delivery;
+often that is the later take after the speaker restarted.
 
 If an edit strategy could materially change the user's intended story, briefly
 state the strategy before writing the EDL. For straightforward mechanical
@@ -98,7 +112,15 @@ there is ambiguity.
 
 4. Read `edit/takes_packed.md` and any needed transcript JSON files.
 
-5. Write `edit/edl.json` from the user's requested outcome.
+5. Write `edit/edl.json` from the user's requested outcome. For draft silence
+   removal, use the deterministic helper:
+
+   ```bash
+   vtc draft-silence-cut /path/to/footage/raw/interview.mp4 --edit-dir /path/to/footage/edit --style documentary
+   ```
+
+   Then inspect/refine the generated EDL when the request requires more than
+   mechanical silence removal.
 
 6. Validate:
 
@@ -191,6 +213,23 @@ markers.
   ]
 }
 ```
+
+## Cut Craft Rules
+
+By default, place cuts on complete word, phrase, sentence, beat, pause, or clear
+visual transition boundaries. Avoid cutting through words, syllables, breaths,
+and incomplete phrases unless the user explicitly asks for a deliberately
+aggressive or stylized edit. Prefer the cleanest complete delivery when nearby
+phrases repeat the same idea.
+
+For tight social edits, remove more dead air but preserve word starts/ends and
+avoid creating tiny record gaps. For documentary and long-form edits, preserve
+more natural pauses and avoid rapid jump cuts unless the visual continuity is
+acceptable. For highlights, favor self-contained phrases and avoid isolated
+filler words.
+
+Always run `vtc validate-edl` before export. When transcript timings exist, the
+validator warns if a source cut appears to land inside a spoken word.
 
 ## Resolve Caveats
 
