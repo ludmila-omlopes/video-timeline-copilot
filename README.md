@@ -152,6 +152,12 @@ my-video/edit/
   resolve/
 ```
 
+## Examples
+
+See [examples/](examples/) for small, media-free example workspaces that show
+the expected `media_index.json`, transcript JSON, `takes_packed.md`, and
+`edl.json` files for silence-removal and highlight-edit workflows.
+
 ## CLI Quickstart
 
 ```powershell
