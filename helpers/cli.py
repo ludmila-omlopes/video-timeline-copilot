@@ -12,6 +12,8 @@ COMMANDS = {
     "export-srt": ("helpers.export_srt", "Generate SRT subtitles from an EDL"),
     "export-fcpxml": ("helpers.export_fcpxml", "Export FCPXML from an EDL"),
     "update-fcpxml": ("helpers.update_fcpxml", "Update an existing FCPXML file in place"),
+    "render-preview": ("helpers.render_preview", "Render an MP4 preview from an EDL"),
+    "qa-preview": ("helpers.qa_preview", "Run automated QA checks for a preview render"),
     "resolve-env-check": ("helpers.resolve_env_check", "Check DaVinci Resolve scripting access"),
     "build-resolve-project": ("helpers.build_resolve_project", "Build a DaVinci Resolve project"),
     "update-resolve-timeline": ("helpers.update_resolve_timeline", "Create or replace timelines in an existing Resolve project"),

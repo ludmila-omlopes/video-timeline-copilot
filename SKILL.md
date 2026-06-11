@@ -23,9 +23,11 @@ explicitly asks for a render.
 6. All session outputs go in the footage folder's `edit/` directory.
 7. Always validate the EDL before exporting.
 8. Always export SRT and FCPXML after validation.
-9. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
+9. When the user asks for a technical preview or when visual/technical timeline
+   integrity is in doubt, render an MP4 preview and run QA before final handoff.
+10. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
    and FCPXML generation and tell the user to import the FCPXML manually.
-10. Repeated delivery, false starts, and self-corrections are not useful
+11. Repeated delivery, false starts, and self-corrections are not useful
     story beats. When adjacent transcript phrases restate the same idea, keep
     only the cleanest complete version and discard the earlier/incomplete take.
 
@@ -151,7 +153,27 @@ there is ambiguity.
    project-name path. This rewrites the XML file on disk; it does not live-sync
    an already-imported Resolve timeline.
 
-9. Build Resolve project when external scripting is available:
+9. Optionally render a technical preview and QA report:
+
+   ```bash
+   vtc render-preview /path/to/footage/edit/edl.json
+   vtc qa-preview /path/to/footage/edit/edl.json
+   ```
+
+   Default outputs are:
+
+   ```text
+   edit/previews/<project>_preview.mp4
+   edit/qa/preview_report.json
+   edit/qa/contact_sheet.jpg
+   ```
+
+   Read `preview_report.json` before handoff when using this path. Treat
+   duration mismatches, audio-only/video-only regions, and unexpected record
+   gaps as issues to inspect and correct when they conflict with the intended
+   edit.
+
+10. Build Resolve project when external scripting is available:
 
    ```bash
    vtc resolve-env-check

@@ -44,7 +44,8 @@ vtc --help
 ```
 
 Expected: `vtc --help` lists commands including `transcribe`,
-`pack-transcripts`, `export-srt`, and `export-fcpxml`.
+`pack-transcripts`, `export-srt`, `export-fcpxml`, `render-preview`, and
+`qa-preview`.
 
 ## 3. Prepare Test Footage
 
@@ -121,6 +122,8 @@ Adjust `source_end` if the source video is shorter than 10 seconds.
 vtc validate-edl .\test_video\edit\edl.json
 vtc export-srt .\test_video\edit\edl.json
 vtc export-fcpxml .\test_video\edit\edl.json
+vtc render-preview .\test_video\edit\edl.json
+vtc qa-preview .\test_video\edit\edl.json
 ```
 
 Expected outputs:
@@ -128,6 +131,9 @@ Expected outputs:
 ```text
 test_video/edit/subtitles/Main_Timeline.srt
 test_video/edit/Teste_Edit.fcpxml
+test_video/edit/previews/Teste_Edit_preview.mp4
+test_video/edit/qa/preview_report.json
+test_video/edit/qa/contact_sheet.jpg
 ```
 
 For DaVinci Resolve Free, import the FCPXML manually:

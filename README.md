@@ -26,6 +26,8 @@ The primary output is an editable timeline, not a flattened MP4.
 - Exports `.srt` subtitles.
 - Exports `.fcpxml` for manual import into Resolve Free, Final Cut Pro, or
   other tools that support FCPXML.
+- Renders optional MP4 previews directly from `edl.json` and writes automated
+  QA reports with contact sheets before handoff.
 - Optionally builds `.drp` / `.dra` projects through the DaVinci Resolve
   scripting API when external scripting is available.
 
@@ -151,6 +153,8 @@ my-video/edit/
   edl.json
   subtitles/
   My_Edit.fcpxml
+  previews/
+  qa/
   resolve/
 ```
 
@@ -170,6 +174,8 @@ vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc validate-edl .\my-video\edit\edl.json
 vtc export-srt .\my-video\edit\edl.json
 vtc export-fcpxml .\my-video\edit\edl.json
+vtc render-preview .\my-video\edit\edl.json
+vtc qa-preview .\my-video\edit\edl.json
 ```
 
 `vtc pack-transcripts` annotates nearby repeated deliveries as
@@ -216,6 +222,43 @@ For Resolve Free, import the generated `.fcpxml` manually:
 ```text
 File > Import > Timeline > Import AAF, EDL, XML...
 ```
+
+## Preview and QA
+
+`vtc render-preview` creates an MP4 proxy from the EDL without requiring
+Resolve:
+
+```powershell
+vtc render-preview .\my-video\edit\edl.json
+```
+
+Default output:
+
+```text
+my-video/edit/previews/<project>_preview.mp4
+```
+
+The renderer cuts linked audio and video together from each EDL range. If the
+timeline has record gaps, the preview includes matching black/silent sections so
+the rendered duration can be compared to the EDL.
+
+Run QA after rendering:
+
+```powershell
+vtc qa-preview .\my-video\edit\edl.json
+```
+
+Default outputs:
+
+```text
+my-video/edit/qa/preview_report.json
+my-video/edit/qa/contact_sheet.jpg
+```
+
+The report includes expected versus actual duration, cut/source counts, record
+gaps, and audio-only or video-only regions when a range or source stream appears
+to lack linked audio/video. Use `--preview`, `--report`, `--contact-sheet`, or
+`--timeline` to override the defaults.
 
 ## DaVinci Resolve
 
