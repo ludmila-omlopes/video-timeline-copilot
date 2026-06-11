@@ -1,58 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import json
-import os
-import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
 from helpers.export_fcpxml import timeline_duration
-from helpers.inventory import find_ffprobe
-
-
-def find_ffmpeg() -> str:
-    found = shutil.which("ffmpeg")
-    if found:
-        return found
-
-    candidates = []
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    if local_app_data:
-        candidates.extend((Path(local_app_data) / "Microsoft" / "WinGet" / "Packages").glob("**/ffmpeg.exe"))
-    for root in (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")):
-        if root:
-            candidates.extend(Path(root).glob("**/ffmpeg.exe"))
-
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
-
-    raise FileNotFoundError(
-        "ffmpeg was not found on PATH or in common FFmpeg install locations. "
-        "Install FFmpeg or add its bin directory to PATH."
-    )
-
-
-def stream_types(path: Path) -> set[str]:
-    proc = subprocess.run(
-        [
-            find_ffprobe(),
-            "-v",
-            "error",
-            "-print_format",
-            "json",
-            "-show_streams",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    payload = json.loads(proc.stdout)
-    return {stream.get("codec_type") for stream in payload.get("streams", [])}
+from helpers.media_tools import find_ffmpeg, stream_types
 
 
 def preview_path(edl_path: Path, edl: dict | None = None, timeline: dict | None = None) -> Path:

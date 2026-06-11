@@ -1,44 +1,13 @@
 from __future__ import annotations
 
 import argparse
-import json
 import subprocess
 from pathlib import Path
 
 from helpers.common import ensure_within, read_json, resolve_relative, write_json
 from helpers.export_fcpxml import timeline_duration
-from helpers.inventory import find_ffprobe
-from helpers.render_preview import find_ffmpeg, preview_path
-
-
-def ffprobe_json(path: Path) -> dict:
-    proc = subprocess.run(
-        [
-            find_ffprobe(),
-            "-v",
-            "error",
-            "-print_format",
-            "json",
-            "-show_format",
-            "-show_streams",
-            str(path),
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    return json.loads(proc.stdout)
-
-
-def stream_types(path: Path) -> set[str]:
-    payload = ffprobe_json(path)
-    return {stream.get("codec_type") for stream in payload.get("streams", [])}
-
-
-def media_duration(path: Path) -> float | None:
-    payload = ffprobe_json(path)
-    value = payload.get("format", {}).get("duration")
-    return float(value) if value is not None else None
+from helpers.media_tools import find_ffmpeg, media_duration, stream_types
+from helpers.render_preview import preview_path
 
 
 def default_report_path(edl_path: Path) -> Path:

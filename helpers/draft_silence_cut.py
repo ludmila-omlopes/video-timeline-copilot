@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import argparse
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 from helpers.common import read_json, safe_filename, write_json
 from helpers.inventory import ffprobe
+from helpers.media_tools import find_ffmpeg
 
 
 STYLE_DEFAULTS = {
@@ -17,13 +17,6 @@ STYLE_DEFAULTS = {
     "highlight": {"padding": 0.18, "min_silence": 0.5, "min_segment": 0.6, "merge_gap": 0.25},
     "longform": {"padding": 0.35, "min_silence": 0.9, "min_segment": 1.0, "merge_gap": 0.5},
 }
-
-
-def find_ffmpeg() -> str:
-    found = shutil.which("ffmpeg")
-    if found:
-        return found
-    raise FileNotFoundError("ffmpeg was not found on PATH. Install FFmpeg or add its bin directory to PATH.")
 
 
 def parse_frame_rate(value: str | None) -> float:
