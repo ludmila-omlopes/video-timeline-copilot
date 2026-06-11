@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from helpers.common import ensure_within, read_json, srt_timestamp
+from helpers.common import ensure_within, read_json, safe_filename, srt_timestamp
 
 
 def words_in_range(words: list[dict], start: float, end: float) -> list[dict]:
@@ -19,38 +19,41 @@ def words_in_range(words: list[dict], start: float, end: float) -> list[dict]:
 
 def build_srt_for_timeline(edl: dict, timeline: dict, edit_dir: Path, out_path: Path) -> None:
     entries = []
-    transcript_cache: dict[str, dict] = {}
-    offset = 0.0
+    transcript_cache: dict[str, dict | None] = {}
+    cursor = 0.0
 
     for item in sorted(timeline["ranges"], key=lambda r: float(r.get("record_start", 0))):
         source_id = item["source"]
         source_start = float(item["source_start"])
         source_end = float(item["source_end"])
         duration = source_end - source_start
+        record_start = float(item.get("record_start", cursor))
         transcript_path = edit_dir / "transcripts" / f"{Path(timeline['sources'][source_id]).stem}.json"
 
-        if transcript_path not in transcript_cache:
-            if not transcript_path.exists():
-                offset += duration
-                continue
-            transcript_cache[str(transcript_path)] = read_json(transcript_path)
+        cache_key = str(transcript_path)
+        if cache_key not in transcript_cache:
+            transcript_cache[cache_key] = read_json(transcript_path) if transcript_path.exists() else None
+        payload = transcript_cache[cache_key]
+        if payload is None:
+            cursor = max(cursor, record_start + duration)
+            continue
 
-        words = words_in_range(transcript_cache[str(transcript_path)].get("words", []), source_start, source_end)
+        words = words_in_range(payload.get("words", []), source_start, source_end)
         chunk = []
         for word in words:
             chunk.append(word)
             text = (word.get("text") or "").strip()
             if len(chunk) >= 5 or (text and text[-1] in ".?!"):
-                local_start = max(source_start, chunk[0]["start"]) - source_start + offset
-                local_end = min(source_end, chunk[-1]["end"]) - source_start + offset
+                local_start = max(source_start, chunk[0]["start"]) - source_start + record_start
+                local_end = min(source_end, chunk[-1]["end"]) - source_start + record_start
                 entries.append((local_start, max(local_end, local_start + 0.3), " ".join(w["text"].strip() for w in chunk)))
                 chunk = []
         if chunk:
-            local_start = max(source_start, chunk[0]["start"]) - source_start + offset
-            local_end = min(source_end, chunk[-1]["end"]) - source_start + offset
+            local_start = max(source_start, chunk[0]["start"]) - source_start + record_start
+            local_end = min(source_end, chunk[-1]["end"]) - source_start + record_start
             entries.append((local_start, max(local_end, local_start + 0.3), " ".join(w["text"].strip() for w in chunk)))
 
-        offset += duration
+        cursor = max(cursor, record_start + duration)
 
     lines = []
     for index, (start, end, text) in enumerate(entries, start=1):
@@ -73,7 +76,10 @@ def main() -> None:
         if out_path:
             target = ensure_within(edit_dir.parent / out_path, edit_dir.parent)
         else:
-            target = edit_dir / "subtitles" / f"{timeline['name'].replace(' ', '_')}.srt"
+            target = ensure_within(
+                edit_dir / "subtitles" / f"{safe_filename(str(timeline['name']), 'timeline')}.srt",
+                edit_dir.parent,
+            )
         build_srt_for_timeline(edl, timeline, edit_dir, target)
         print(f"SRT -> {target}")
 
