@@ -66,6 +66,22 @@ def ffprobe(path: Path) -> dict:
     }
 
 
+def iter_source_videos(root: Path, edit_dir: Path) -> list[Path]:
+    """List source videos under root, excluding generated outputs and hidden directories."""
+    videos = []
+    edit_dir = edit_dir.resolve()
+    for path in sorted(root.rglob("*")):
+        if path.suffix.lower() not in VIDEO_EXTENSIONS:
+            continue
+        resolved = path.resolve()
+        if edit_dir == resolved or edit_dir in resolved.parents:
+            continue
+        if any(part.startswith(".") for part in path.relative_to(root).parts):
+            continue
+        videos.append(path)
+    return videos
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Index local video media into edit/media_index.json")
     parser.add_argument("folder", type=Path, help="Folder containing source media")
@@ -74,7 +90,7 @@ def main() -> None:
 
     root = args.folder.resolve()
     edit_dir = (args.edit_dir or root / "edit").resolve()
-    videos = sorted(p for p in root.rglob("*") if p.suffix.lower() in VIDEO_EXTENSIONS)
+    videos = iter_source_videos(root, edit_dir)
     items = []
 
     for video in videos:
