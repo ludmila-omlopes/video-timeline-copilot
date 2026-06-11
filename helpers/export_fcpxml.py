@@ -12,18 +12,35 @@ def fcpx_time(seconds: float, fps: float) -> str:
     return fcpx_time_from_frames(fcpx_frames(seconds, fps), fps)
 
 
+def fps_fraction(fps: float) -> Fraction:
+    """Map a float fps to its conventional rational frame rate."""
+    nearest_int = round(fps)
+    if nearest_int > 0 and abs(fps - nearest_int) < 1e-6:
+        return Fraction(nearest_int, 1)
+
+    ntsc_base = round(fps * 1001 / 1000)
+    if ntsc_base > 0 and abs(fps - ntsc_base * 1000 / 1001) < 0.005:
+        return Fraction(ntsc_base * 1000, 1001)
+
+    return Fraction(fps).limit_denominator(100000)
+
+
 def fcpx_frames(seconds: float, fps: float) -> int:
-    return int(round(seconds * fps))
+    rate = fps_fraction(fps)
+    return int(round(seconds * rate.numerator / rate.denominator))
 
 
 def fcpx_time_from_frames(frames: int, fps: float) -> str:
-    rate = int(fps) if float(fps).is_integer() else fps
-    return f"{frames}/{rate}s"
+    rate = fps_fraction(fps)
+    value = Fraction(frames * rate.denominator, rate.numerator)
+    if value.denominator == 1:
+        return f"{value.numerator}s"
+    return f"{value.numerator}/{value.denominator}s"
 
 
 def frame_duration(fps: float) -> str:
-    rate = Fraction(1, 1) / Fraction(str(fps))
-    return f"{rate.numerator}/{rate.denominator}s"
+    rate = fps_fraction(fps)
+    return f"{rate.denominator}/{rate.numerator}s"
 
 
 def file_url(path: Path) -> str:

@@ -1,17 +1,28 @@
 from __future__ import annotations
 
+from fractions import Fraction
 import json
 from pathlib import Path
+import re
+import xml.etree.ElementTree as ET
 
 import pytest
 
-from helpers.export_fcpxml import build_fcpxml, default_fcpxml_path, timeline_duration
+from helpers.export_fcpxml import (
+    build_fcpxml,
+    default_fcpxml_path,
+    fcpx_time_from_frames,
+    fps_fraction,
+    frame_duration,
+    timeline_duration,
+)
 
 
 def write_fcpx_edl(
     tmp_path: Path,
     ranges: list[dict] | None = None,
     *,
+    fps: float = 30,
     project_name: str = "Example Project",
 ) -> tuple[Path, dict]:
     raw_dir = tmp_path / "raw"
@@ -22,7 +33,7 @@ def write_fcpx_edl(
     edl = {
         "version": 1,
         "project_name": project_name,
-        "fps": 30,
+        "fps": fps,
         "timelines": [
             {
                 "name": "Main",
@@ -39,6 +50,15 @@ def write_fcpx_edl(
     edl_path = edit_dir / "edl.json"
     edl_path.write_text(json.dumps(edl), encoding="utf-8")
     return edl_path, edl
+
+
+def parse_fcpx_time(value: str) -> Fraction:
+    assert value.endswith("s")
+    time_value = value[:-1]
+    if "/" in time_value:
+        numerator, denominator = time_value.split("/", maxsplit=1)
+        return Fraction(int(numerator), int(denominator))
+    return Fraction(int(time_value), 1)
 
 
 def test_timeline_duration_uses_latest_record_end() -> None:
@@ -78,3 +98,60 @@ def test_default_fcpxml_path_sanitizes_project_name(tmp_path: Path) -> None:
     edl_path, edl = write_fcpx_edl(tmp_path, project_name="My Project:/Cut")
 
     assert default_fcpxml_path(edl_path, edl).name == "My_Project_Cut.fcpxml"
+
+
+@pytest.mark.parametrize(
+    ("fps", "expected"),
+    [
+        (30.0, Fraction(30, 1)),
+        (29.97002997002997, Fraction(30000, 1001)),
+        (29.97, Fraction(30000, 1001)),
+        (23.976, Fraction(24000, 1001)),
+        (25, Fraction(25, 1)),
+        (59.94, Fraction(60000, 1001)),
+    ],
+)
+def test_fps_fraction_maps_common_rates(fps: float, expected: Fraction) -> None:
+    assert fps_fraction(fps) == expected
+
+
+def test_frame_duration_uses_rational_frame_rate() -> None:
+    assert frame_duration(29.97002997002997) == "1001/30000s"
+    assert frame_duration(30) == "1/30s"
+
+
+def test_fcpx_time_from_frames_uses_rational_frame_rate() -> None:
+    assert fcpx_time_from_frames(1, 29.97002997002997) == "1001/30000s"
+
+
+def test_build_fcpxml_uses_integer_rational_time_attributes_for_ntsc_fps(tmp_path: Path) -> None:
+    edl_path, _ = write_fcpx_edl(tmp_path, fps=29.97002997002997)
+
+    root = build_fcpxml(edl_path).getroot()
+
+    time_attribute = re.compile(r"^\d+(?:/\d+)?s$")
+    for element in root.iter():
+        for attribute in ("offset", "start", "duration", "frameDuration"):
+            value = element.attrib.get(attribute)
+            if value is not None:
+                assert time_attribute.match(value), (element.tag, attribute, value)
+
+    serialized = ET.tostring(root, encoding="unicode")
+    serialized_time_attribute = re.compile(r'\b(?:offset|start|duration|frameDuration)="([^"]+)"')
+    assert serialized_time_attribute.findall(serialized)
+    for value in serialized_time_attribute.findall(serialized):
+        assert time_attribute.match(value), value
+
+
+def test_build_fcpxml_sequence_duration_matches_timeline_duration_for_ntsc_fps(tmp_path: Path) -> None:
+    edl_path, edl = write_fcpx_edl(tmp_path, fps=29.97002997002997)
+
+    root = build_fcpxml(edl_path).getroot()
+    sequence = root.find("./library/event/project/sequence")
+    assert sequence is not None
+    duration = sequence.attrib["duration"]
+
+    actual_seconds = parse_fcpx_time(duration)
+    expected_seconds = Fraction.from_float(timeline_duration(edl["timelines"][0])).limit_denominator(100000)
+    one_frame = Fraction(1001, 30000)
+    assert abs(actual_seconds - expected_seconds) <= one_frame
