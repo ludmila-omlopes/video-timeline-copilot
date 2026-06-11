@@ -2,54 +2,15 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import shutil
 import subprocess
 from pathlib import Path
 
 from helpers.common import VIDEO_EXTENSIONS, write_json
-
-
-def find_ffprobe() -> str:
-    found = shutil.which("ffprobe")
-    if found:
-        return found
-
-    candidates = []
-    local_app_data = os.environ.get("LOCALAPPDATA")
-    if local_app_data:
-        packages = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
-        if packages.exists():
-            candidates.extend(packages.glob("**/ffprobe.exe"))
-
-    program_files = [os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)")]
-    for root in program_files:
-        if root:
-            candidates.extend(Path(root).glob("**/ffprobe.exe"))
-
-    for candidate in candidates:
-        if candidate.is_file():
-            return str(candidate)
-
-    raise FileNotFoundError(
-        "ffprobe was not found on PATH or in common FFmpeg install locations. "
-        "Install FFmpeg or add its bin directory to PATH."
-    )
+from helpers.media_tools import ffprobe_json
 
 
 def ffprobe(path: Path) -> dict:
-    cmd = [
-        find_ffprobe(),
-        "-v",
-        "error",
-        "-print_format",
-        "json",
-        "-show_format",
-        "-show_streams",
-        str(path),
-    ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=True)
-    payload = json.loads(proc.stdout)
+    payload = ffprobe_json(path)
     video_stream = next((s for s in payload.get("streams", []) if s.get("codec_type") == "video"), {})
     audio_stream = next((s for s in payload.get("streams", []) if s.get("codec_type") == "audio"), {})
     return {

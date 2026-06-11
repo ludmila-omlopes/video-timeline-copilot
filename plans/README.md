@@ -14,7 +14,7 @@ Selection note: this run was non-interactive, so the top 5 findings by leverage 
 | [002](002-fcpxml-rational-fps.md) | Valid rational FCPXML times for non-integer fps | P1 | S | 001 | DONE |
 | [003](003-srt-record-gaps.md) | SRT export: record gaps, transcript cache, safe filenames | P1 | S | 001 | DONE |
 | [004](004-inventory-exclude-edit-outputs.md) | Inventory excludes generated edit/ outputs | P2 | S | 001 | DONE |
-| [005](005-consolidate-ffmpeg-discovery.md) | Consolidate cached ffmpeg/ffprobe discovery | P2 | M | 001 | TODO |
+| [005](005-consolidate-ffmpeg-discovery.md) | Consolidate cached ffmpeg/ffprobe discovery | P2 | M | 001 | DONE |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
