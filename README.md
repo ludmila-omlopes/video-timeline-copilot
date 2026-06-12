@@ -33,15 +33,20 @@ The primary output is an editable timeline, not a flattened MP4.
 
 ## Setup Prompt
 
-Paste this into Codex:
+Install once with uv:
 
-```text
-Set up https://github.com/ludmila-omlopes/video-timeline-copilot.git for me.
-Read install.md first. Register the repo as a Codex skill under
-~/.codex/skills/video-timeline-copilot, then set up the Python helper CLI in an
-isolated virtual environment. Make sure ffmpeg/ffprobe are available. Then read
-SKILL.md for daily usage. Do not transcribe anything yet; just tell me when the
-skill is ready and what folder structure I should use for footage.
+```bash
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+video-timeline-copilot install
+```
+
+The first command installs the Python CLI directly from GitHub. The second
+registers the same `SKILL.md` for Claude and Codex.
+
+Update later with:
+
+```bash
+video-timeline-copilot update
 ```
 
 After setup, point Codex at a footage folder:
@@ -69,15 +74,23 @@ directory; the skill directory stays clean.
 
 ## Manual Install
 
-There are two parts:
+Most users should use the uv installer above. Manual setup has two parts:
 
-1. The **Codex skill** is installed by placing this repo under
-   `~/.codex/skills/video-timeline-copilot`.
+1. The **agent skill** is installed by placing this repo under a Claude or
+   Codex skills folder.
 2. The **Python helper CLI** is installed into a Python environment so commands
    like `vtc transcribe` are available.
 
-The virtual environment is for the helper CLI and dependencies, not for Codex
-skill discovery.
+The recommended manual CLI install uses `uv` instead of a hand-managed virtual
+environment:
+
+```bash
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+vtc --help
+```
+
+Then either run `video-timeline-copilot install` or place/symlink this
+repository into your agent skill folder.
 
 ```powershell
 # 1. Clone the repo directly into the Codex skills folder
@@ -86,13 +99,7 @@ git clone https://github.com/ludmila-omlopes/video-timeline-copilot.git `
   $env:USERPROFILE\.codex\skills\video-timeline-copilot
 cd $env:USERPROFILE\.codex\skills\video-timeline-copilot
 
-# 2. Create a virtual environment for the helper CLI
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e ".[transcribe]"
-
-# 3. Verify the CLI
+# 2. Verify the CLI installed by uv
 vtc --help
 ```
 

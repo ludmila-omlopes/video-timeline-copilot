@@ -33,21 +33,17 @@ explicitly asks for a render.
 
 ## CLI Invocation
 
-Use the `vtc` command when it is available on `PATH`. If `vtc` is not found,
-run the skill-local executable instead:
+Use the `vtc` command when it is available on `PATH`. The recommended installer
+uses `uv tool install` so `vtc` should be installed as an isolated tool.
 
-```powershell
-$env:USERPROFILE\.codex\skills\video-timeline-copilot\.venv\Scripts\vtc.exe
-```
-
-On macOS/Linux, the equivalent fallback is:
+If `vtc` is not found but `uv` is available, run the CLI through uv instead:
 
 ```bash
-~/.codex/skills/video-timeline-copilot/.venv/bin/vtc
+uv tool run --from "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main" vtc
 ```
 
-Do not stop just because the bare `vtc` command is missing; locate the skill
-virtual environment and use its executable.
+Do not stop just because the bare `vtc` command is missing; try the uv fallback
+before asking the user to reinstall.
 
 ## User-Facing Request Handling
 

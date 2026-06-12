@@ -1,16 +1,54 @@
 # Install
 
-There are two separate setup steps:
+## Recommended install
+
+Recommended:
+
+```bash
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+video-timeline-copilot install
+```
+
+This installer:
+
+1. Installs the `vtc` Python CLI directly from GitHub with `uv tool install`.
+2. Registers the skill for Claude and Codex.
+3. Checks for `ffmpeg` and `ffprobe`.
+
+Update later with:
+
+```bash
+video-timeline-copilot update
+```
+
+Run diagnostics with:
+
+```bash
+video-timeline-copilot doctor
+```
+
+## What gets installed
+
+There are two setup steps:
 
 1. Install the **Codex skill** by placing this repo under
-   `~/.codex/skills/video-timeline-copilot`.
+   an agent skill directory.
 2. Install the **Python helper CLI** into a Python environment so commands like
    `vtc inventory` and `vtc transcribe` are available.
 
-The virtual environment is only for the helper CLI and dependencies. Codex skill
-discovery comes from the `SKILL.md` file in the skills folder.
+The installer handles skill registration. `uv tool install` handles the Python
+CLI so users do not have to manage a virtual environment manually.
 
-## Codex Skill Install
+## Skill locations
+
+The installer registers the same `SKILL.md` in the common personal skill
+locations:
+
+- Claude: `~/.claude/skills/video-timeline-copilot`
+- Codex / Open Agent Skills: `~/.agents/skills/video-timeline-copilot`
+- Codex legacy compatibility: `~/.codex/skills/video-timeline-copilot`
+
+## Manual skill install
 
 Windows PowerShell:
 
@@ -30,34 +68,24 @@ git clone https://github.com/ludmila-omlopes/video-timeline-copilot.git \
 cd ~/.codex/skills/video-timeline-copilot
 ```
 
-## Python Helper CLI
+## Manual Python helper CLI
 
-Recommended isolated install:
+Recommended isolated install with uv:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-On Windows PowerShell, activate with:
-
-```powershell
-.\.venv\Scripts\Activate.ps1
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
 ```
 
 After installation, the `vtc` command is available on `PATH`:
 
 ```bash
 vtc --help
-vtc inventory --help
-vtc transcribe --help
-vtc pack-transcripts --help
-vtc validate-edl --help
-vtc export-srt --help
-vtc export-fcpxml --help
-vtc resolve-env-check --help
-vtc build-resolve-project --help
+```
+
+To reinstall from the latest GitHub `main`:
+
+```bash
+uv tool install --force "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
 ```
 
 ## Dependencies
