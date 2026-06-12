@@ -19,6 +19,7 @@ packages = ["helpers"]
 
 [project.scripts]
 vtc = "helpers.cli:main"
+video-timeline-copilot = "helpers.installer:main"
 
 [tool.ruff]
 target-version = "py310"
