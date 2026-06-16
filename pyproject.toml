@@ -4,7 +4,20 @@ version = "0.1.0"
 description = "Transcript-first AI timeline generation with DaVinci Resolve project output"
 readme = "README.md"
 requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Ludmila Lopes" }]
 dependencies = []
+classifiers = [
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/ludmila-omlopes/video-timeline-copilot"
+Repository = "https://github.com/ludmila-omlopes/video-timeline-copilot"
+Issues = "https://github.com/ludmila-omlopes/video-timeline-copilot/issues"
 
 [project.optional-dependencies]
 transcribe = ["faster-whisper>=1.1.0"]
