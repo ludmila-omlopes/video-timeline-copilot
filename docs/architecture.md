@@ -52,7 +52,19 @@ to land inside words, without turning those warnings into hard schema errors.
 Validation is deliberately separate from Resolve so offline workflows still get
 useful feedback.
 
-### 5. Backend Layer
+### 5. Evaluation Layer
+
+`helpers/render_preview.py` can render an MP4 proxy directly from `edl.json`.
+`helpers/qa_preview.py` compares that proxy against the EDL and writes technical
+QA output such as duration checks, audio-only/video-only regions, record gaps,
+and a contact sheet.
+
+`helpers/evaluate_edl.py` is the final handoff gate. It combines EDL validation,
+cut-quality warnings, preview QA, and explicit agent-review criteria into
+`edit/qa/evaluation_report.json`. The report tells the agent whether to proceed,
+revise the EDL and retry, or stop after the configured attempt limit.
+
+### 6. Backend Layer
 
 `helpers/build_resolve_project.py` is the first backend. It translates the EDL
 into DaVinci Resolve scripting API calls:

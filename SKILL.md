@@ -30,9 +30,11 @@ explicitly asks for a render.
 8. Always export SRT and FCPXML after validation.
 9. When the user asks for a technical preview or when visual/technical timeline
    integrity is in doubt, render an MP4 preview and run QA before final handoff.
-10. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
+10. Run final self-evaluation before handoff. If it fails, revise the EDL and
+    rerun exports/evaluation up to the configured attempt limit.
+11. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
    and FCPXML generation and tell the user to import the FCPXML manually.
-11. Repeated delivery, false starts, and self-corrections are not useful
+12. Repeated delivery, false starts, and self-corrections are not useful
     story beats. When adjacent transcript phrases restate the same idea, keep
     only the cleanest complete version and discard the earlier/incomplete take.
 
@@ -194,7 +196,24 @@ there is ambiguity.
    gaps as issues to inspect and correct when they conflict with the intended
    edit.
 
-10. Build Resolve project when external scripting is available:
+10. Run self-evaluation before final handoff:
+
+   ```bash
+   vtc evaluate-edl /path/to/footage/edit/edl.json --require-preview --attempt 1 --max-attempts 3
+   ```
+
+   Default output:
+
+   ```text
+   edit/qa/evaluation_report.json
+   ```
+
+   If the report status is `needs_revision`, revise `edit/edl.json`, rerun
+   validation, SRT/FCPXML export, preview rendering, QA, and evaluation with the
+   next `--attempt` value. Stop after `--max-attempts`; if the status is still
+   `blocked`, tell the user what failed instead of continuing to iterate.
+
+11. Build Resolve project when external scripting is available:
 
    ```bash
    vtc resolve-env-check
@@ -211,6 +230,32 @@ there is ambiguity.
    By default, this creates uniquely named replacement timelines and leaves old
    timelines intact. Use `--replace-existing` only when the user explicitly
    wants matching timeline names deleted and recreated.
+
+## Self-Evaluation Loop
+
+Use `vtc evaluate-edl` as the final gate before handoff. It checks:
+
+- export validity through `vtc validate-edl` rules
+- cut-craft warnings such as cuts inside spoken words
+- preview QA when `edit/qa/preview_report.json` exists
+- duration, audio-only, and video-only preview failures
+- agent-review criteria for prompt alignment, pacing, and visual coherence
+
+The helper writes a JSON report with `status`, `blockers`, `warnings`,
+`revision_guidance`, and remaining attempts. Treat `status: pass` as permission
+to proceed only after doing the listed agent review. Treat
+`status: needs_revision` as instructions to revise the EDL and rerun the
+workflow. Treat `status: blocked` as a hard stop: report the blockers and the
+attempt count to the user.
+
+Guardrails:
+
+- Default maximum: 3 evaluation attempts.
+- Do not render more than once per attempt unless a render command fails or the
+  EDL changed.
+- Do not use external paid or network video-analysis services unless the user
+  explicitly asks for that path.
+- Keep every report under `edit/qa/` so the user can inspect what was checked.
 
 ## EDL Contract
 
