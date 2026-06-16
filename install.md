@@ -5,6 +5,22 @@
 Recommended:
 
 ```bash
+npx skills add ludmila-omlopes/video-timeline-copilot -g -a codex
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+```
+
+The `npx skills add` command installs the agent skill instructions. The `uv`
+command installs the `vtc` Python helper CLI.
+
+`skills.sh` does not run post-install hooks from skills. If the helper CLI is
+not installed when the skill is first used, the skill tells the agent to ask
+before running the `uv tool install` command above.
+
+## Bundled installer
+
+This repo also ships a convenience installer:
+
+```bash
 uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
 video-timeline-copilot install
 ```
@@ -12,7 +28,7 @@ video-timeline-copilot install
 This installer:
 
 1. Installs the `vtc` Python CLI directly from GitHub with `uv tool install`.
-2. Registers the skill for Claude and Codex.
+2. Registers the skill for Claude, Codex, and Open Agent Skills locations.
 3. Checks for `ffmpeg` and `ffprobe`.
 
 Update later with:
@@ -31,8 +47,8 @@ video-timeline-copilot doctor
 
 There are two setup steps:
 
-1. Install the **Codex skill** by placing this repo under
-   an agent skill directory.
+1. Install the **agent skill** with `npx skills add`, the bundled installer, or
+   by placing this repo under an agent skill directory.
 2. Install the **Python helper CLI** into a Python environment so commands like
    `vtc inventory` and `vtc transcribe` are available.
 

@@ -1,6 +1,11 @@
 ---
 name: video-timeline-copilot
-description: Generate editable video timelines from local footage using transcript-first AI editing, faster-whisper, structured EDLs, FCPXML, and optional DaVinci Resolve scripting API output.
+description: "Use when editing local video footage with an AI agent: remove silence, create rough cuts or highlight edits, generate subtitles, export FCPXML, or build DaVinci Resolve timelines."
+license: MIT
+compatibility: "Requires Python 3.10+, uv for CLI fallback, FFmpeg/ffprobe for media workflows, and optional faster-whisper/DaVinci Resolve Studio."
+metadata:
+  author: ludmila-omlopes
+  version: "0.1.0"
 ---
 
 # Video Timeline Copilot
@@ -35,6 +40,26 @@ explicitly asks for a render.
 
 Use the `vtc` command when it is available on `PATH`. The recommended installer
 uses `uv tool install` so `vtc` should be installed as an isolated tool.
+
+Before running the workflow for the first time in an environment, check whether
+the helper CLI is available:
+
+```bash
+vtc --help
+```
+
+If `vtc` is missing and the user has not already approved installing the helper
+CLI, explain that the skill instructions are installed but the Python helper CLI
+is still required for media inventory, transcription, EDL validation, subtitle
+export, FCPXML export, preview rendering, and Resolve handoff. Ask for
+permission before installing it:
+
+```bash
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+```
+
+If `uv` is missing too, ask the user to install `uv` or follow the manual Python
+helper setup in `install.md`.
 
 If `vtc` is not found but `uv` is available, run the CLI through uv instead:
 

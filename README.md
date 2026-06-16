@@ -31,21 +31,41 @@ The primary output is an editable timeline, not a flattened MP4.
 - Optionally builds `.drp` / `.dra` projects through the DaVinci Resolve
   scripting API when external scripting is available.
 
-## Setup Prompt
+## Setup
 
-Install once with uv:
+Install the agent skill with `skills.sh`:
+
+```bash
+npx skills add ludmila-omlopes/video-timeline-copilot -g -a codex
+```
+
+Then install the Python helper CLI with `uv`:
+
+```bash
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+vtc --help
+```
+
+The `npx skills add` command installs the `SKILL.md` instructions. The `uv`
+command installs the `vtc` helper CLI used for media inventory, transcription,
+EDL validation, subtitles, FCPXML, previews, and Resolve handoff.
+
+`skills.sh` does not run post-install hooks from skills. If the helper CLI is
+not installed when the skill is first used, the skill tells the agent to ask
+before running the `uv tool install` command above.
+
+If you prefer one command that installs the helper CLI and registers the skill
+for Claude and Codex, use the bundled installer:
 
 ```bash
 uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
 video-timeline-copilot install
 ```
 
-The first command installs the Python CLI directly from GitHub. The second
-registers the same `SKILL.md` for Claude and Codex.
-
 Update later with:
 
 ```bash
+npx skills update video-timeline-copilot
 video-timeline-copilot update
 ```
 
@@ -74,7 +94,8 @@ directory; the skill directory stays clean.
 
 ## Manual Install
 
-Most users should use the uv installer above. Manual setup has two parts:
+Most users should use the `skills.sh` and `uv` setup above. Manual setup has two
+parts:
 
 1. The **agent skill** is installed by placing this repo under a Claude or
    Codex skills folder.

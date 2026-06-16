@@ -102,7 +102,20 @@ def remove_path(path: Path) -> None:
 
 def copy_skill(source: Path, target: Path) -> None:
     remove_path(target)
-    ignore = shutil.ignore_patterns(".git", ".venv", "__pycache__", "*.pyc", "edit", "test_video", "build", "dist", "*.egg-info")
+    ignore = shutil.ignore_patterns(
+        ".git",
+        ".venv",
+        ".pytest_cache",
+        ".ruff_cache",
+        "__pycache__",
+        "*.pyc",
+        "edit",
+        "test_video",
+        "plans",
+        "build",
+        "dist",
+        "*.egg-info",
+    )
     shutil.copytree(source, target, ignore=ignore)
     (target / MANAGED_MARKER).write_text(str(source), encoding="utf-8")
 

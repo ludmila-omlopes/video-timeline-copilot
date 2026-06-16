@@ -27,6 +27,8 @@ def test_register_skills_copies_managed_skill_without_git_or_venv(tmp_path: Path
     (source / "SKILL.md").write_text("---\nname: video-timeline-copilot\n---\n", encoding="utf-8")
     (source / ".git").mkdir()
     (source / ".venv").mkdir()
+    (source / ".pytest_cache").mkdir()
+    (source / "plans").mkdir()
     monkeypatch.setattr(installer.Path, "home", lambda: tmp_path / "home")
 
     installer.register_skills(source, "claude", copy=True, force=False)
@@ -36,6 +38,8 @@ def test_register_skills_copies_managed_skill_without_git_or_venv(tmp_path: Path
     assert (target / installer.MANAGED_MARKER).exists()
     assert not (target / ".git").exists()
     assert not (target / ".venv").exists()
+    assert not (target / ".pytest_cache").exists()
+    assert not (target / "plans").exists()
 
 
 def test_register_skills_leaves_unmanaged_existing_target_without_force(tmp_path: Path, monkeypatch) -> None:
