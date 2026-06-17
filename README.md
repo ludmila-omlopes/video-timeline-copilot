@@ -28,6 +28,8 @@ The primary output is an editable timeline, not a flattened MP4.
   other tools that support FCPXML.
 - Renders optional MP4 previews directly from `edl.json` and writes automated
   QA reports with contact sheets before handoff.
+- Evaluates validation, cut quality, preview QA, and agent-review criteria so
+  weak outputs can be revised before final handoff.
 - Optionally builds `.drp` / `.dra` projects through the DaVinci Resolve
   scripting API when external scripting is available.
 
@@ -204,6 +206,7 @@ vtc export-srt .\my-video\edit\edl.json
 vtc export-fcpxml .\my-video\edit\edl.json
 vtc render-preview .\my-video\edit\edl.json
 vtc qa-preview .\my-video\edit\edl.json
+vtc evaluate-edl .\my-video\edit\edl.json --require-preview
 ```
 
 `vtc pack-transcripts` annotates nearby repeated deliveries as
@@ -288,6 +291,34 @@ gaps, and audio-only or video-only regions when a range or source stream appears
 to lack linked audio/video. Use `--preview`, `--report`, `--contact-sheet`, or
 `--timeline` to override the defaults.
 
+## Self-Evaluation
+
+Run `vtc evaluate-edl` after validation, export, preview rendering, and QA:
+
+```powershell
+vtc evaluate-edl .\my-video\edit\edl.json --require-preview --attempt 1 --max-attempts 3
+```
+
+Default output:
+
+```text
+my-video/edit/qa/evaluation_report.json
+```
+
+The evaluation report combines EDL validation, cut-quality warnings, preview QA,
+and agent-review criteria for prompt alignment, pacing, and visual coherence. It
+returns one of three statuses:
+
+- `pass`: machine checks passed; finish the listed agent review before handoff.
+- `needs_revision`: revise `edit/edl.json`, rerun exports/preview/QA, and call
+  `evaluate-edl` again with the next `--attempt` value.
+- `blocked`: the edit still fails after `--max-attempts`; stop and report the
+  blockers instead of continuing to iterate.
+
+Use `--strict-cut-warnings` when cuts inside words or tiny record gaps should
+block delivery. Use `--allow-record-gaps` when the EDL intentionally contains
+black/silent gaps.
+
 ## DaVinci Resolve
 
 `vtc export-fcpxml` is the default fallback for users who cannot use Resolve
@@ -369,7 +400,9 @@ local media
   -> packed transcript for Codex
   -> agent-authored edl.json
   -> validation
-  -> SRT / FCPXML / optional Resolve project
+  -> SRT / FCPXML / preview QA
+  -> self-evaluation loop
+  -> optional Resolve project
 ```
 
 The EDL is the durable edit contract. It contains timeline names, source media,
@@ -384,8 +417,9 @@ optional transform metadata.
    file generation.
 4. Silence removal is a draft timeline generator, not the final creative edit.
 5. Validate before exporting.
-6. Keep all per-session outputs in the footage folder's `edit/` directory.
-7. When Resolve scripting is unavailable, produce SRT and FCPXML instead of
+6. Evaluate before handoff and revise weak outputs within a bounded loop.
+7. Keep all per-session outputs in the footage folder's `edit/` directory.
+8. When Resolve scripting is unavailable, produce SRT and FCPXML instead of
    blocking the workflow.
 
 See [SKILL.md](SKILL.md) for Codex usage rules, [install.md](install.md) for

@@ -45,7 +45,7 @@ vtc --help
 
 Expected: `vtc --help` lists commands including `transcribe`,
 `pack-transcripts`, `export-srt`, `export-fcpxml`, `render-preview`, and
-`qa-preview`.
+`qa-preview`, and `evaluate-edl`.
 
 ## 3. Prepare Test Footage
 
@@ -124,6 +124,7 @@ vtc export-srt .\test_video\edit\edl.json
 vtc export-fcpxml .\test_video\edit\edl.json
 vtc render-preview .\test_video\edit\edl.json
 vtc qa-preview .\test_video\edit\edl.json
+vtc evaluate-edl .\test_video\edit\edl.json --require-preview --attempt 1 --max-attempts 3
 ```
 
 Expected outputs:
@@ -134,6 +135,7 @@ test_video/edit/Teste_Edit.fcpxml
 test_video/edit/previews/Teste_Edit_preview.mp4
 test_video/edit/qa/preview_report.json
 test_video/edit/qa/contact_sheet.jpg
+test_video/edit/qa/evaluation_report.json
 ```
 
 For DaVinci Resolve Free, import the FCPXML manually:
@@ -177,6 +179,8 @@ Expected behavior:
 - Codex writes the internal `edit/edl.json` without requiring the user to know
   that file name.
 - Codex validates the EDL and exports SRT and FCPXML.
+- Codex evaluates the final EDL/preview output and revises failed outputs within
+  the configured attempt limit.
 - If Resolve scripting is unavailable, Codex stops before native project build
   and tells the user to import the FCPXML manually.
 
@@ -191,4 +195,5 @@ The first-user test passes when:
 - `takes_packed.md` is generated.
 - EDL validation passes.
 - SRT and FCPXML are generated.
+- Preview QA and evaluation reports are generated.
 - The FCPXML can be selected in Resolve's timeline import dialog.
