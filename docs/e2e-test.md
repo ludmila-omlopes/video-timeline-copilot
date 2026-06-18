@@ -9,37 +9,39 @@ their own validated setup checklist.
 
 ## 1. Create a Fresh Skill Install
 
-From outside this repo:
+Install the skill through the same path a user would normally use:
 
 ```powershell
-mkdir $env:USERPROFILE\.codex\skills -ErrorAction SilentlyContinue
+npx skills add ludmila-omlopes/video-timeline-copilot -g -a codex
 ```
 
-Copy or clone the project into the Codex skills folder:
+For local unpublished testing, push the branch first and install from that
+GitHub source when practical. If you use `npx skills add .`, first remove local
+ignored folders such as `.venv`, because the `skills` CLI copies the local
+directory exactly as it exists on disk.
+
+Verify that only one copy is installed and that it does not contain `.venv`:
 
 ```powershell
-git clone https://github.com/ludmila-omlopes/video-timeline-copilot.git $env:USERPROFILE\.codex\skills\video-timeline-copilot
-cd $env:USERPROFILE\.codex\skills\video-timeline-copilot
+Get-ChildItem -Recurse -Filter SKILL.md $env:USERPROFILE\.agents\skills\video-timeline-copilot
+Test-Path $env:USERPROFILE\.agents\skills\video-timeline-copilot\.venv
 ```
 
-For a local unpublished test, copy this repo folder into that destination
-instead of cloning it.
+Expected: exactly one `SKILL.md`, and `.venv` returns `False`.
 
-## 2. Register Skill and Install CLI in a Clean Virtual Environment
+## 2. Install the Helper CLI
 
-For a true Codex skill simulation, the repo should be present under:
-
-```text
-~/.codex/skills/video-timeline-copilot
-```
-
-The virtual environment is only for the Python helper CLI and dependencies.
+Install the Python helper CLI separately from the skill:
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e ".[transcribe]"
+uv tool install --force "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+vtc --help
+```
+
+For testing an unpublished local checkout, use the local package path:
+
+```powershell
+uv tool install --force "D:\Codigos_Diversos\video-timeline-copilot[transcribe]"
 vtc --help
 ```
 

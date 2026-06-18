@@ -12,6 +12,12 @@ uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/lud
 The `npx skills add` command installs the agent skill instructions. The `uv`
 command installs the `vtc` Python helper CLI.
 
+For local unpublished testing, avoid running `npx skills add .` from a checkout
+that contains `.venv`, `.pytest_cache`, or other ignored build/cache folders.
+The `skills` CLI copies local directories as they exist on disk. Install from
+GitHub after pushing, or use the bundled installer, to avoid copying local
+environment files into the installed skill.
+
 `skills.sh` does not run post-install hooks from skills. If the helper CLI is
 not installed when the skill is first used, the skill tells the agent to ask
 before running the `uv tool install` command above.
@@ -74,6 +80,9 @@ git clone https://github.com/ludmila-omlopes/video-timeline-copilot.git `
   $env:USERPROFILE\.codex\skills\video-timeline-copilot
 cd $env:USERPROFILE\.codex\skills\video-timeline-copilot
 ```
+
+Do not create a Python virtual environment inside the installed skill folder.
+Install the helper CLI separately with `uv tool install`.
 
 macOS/Linux:
 

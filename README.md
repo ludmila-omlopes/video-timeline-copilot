@@ -52,6 +52,10 @@ The `npx skills add` command installs the `SKILL.md` instructions. The `uv`
 command installs the `vtc` helper CLI used for media inventory, transcription,
 EDL validation, subtitles, FCPXML, previews, and Resolve handoff.
 
+When testing from a local checkout, prefer installing from GitHub after pushing
+or use the bundled installer. `npx skills add .` copies the local directory as
+it exists on disk, including ignored folders such as `.venv` if they are present.
+
 `skills.sh` does not run post-install hooks from skills. If the helper CLI is
 not installed when the skill is first used, the skill tells the agent to ask
 before running the `uv tool install` command above.
