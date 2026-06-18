@@ -2,7 +2,7 @@
 name: video-timeline-copilot
 description: "Use when editing local video footage with an AI agent: remove silence, create rough cuts or highlight edits, generate subtitles, export FCPXML, or build DaVinci Resolve timelines."
 license: MIT
-compatibility: "Requires Python 3.10+, uv for CLI fallback, FFmpeg/ffprobe for media workflows, and optional faster-whisper/DaVinci Resolve Studio."
+compatibility: "Requires Python 3.10+, uv for helper CLI installation, FFmpeg/ffprobe for media workflows, and optional faster-whisper/DaVinci Resolve Studio."
 metadata:
   author: ludmila-omlopes
   version: "0.1.0"
@@ -51,10 +51,11 @@ vtc --help
 ```
 
 If `vtc` is missing and the user has not already approved installing the helper
-CLI, explain that the skill instructions are installed but the Python helper CLI
-is still required for media inventory, transcription, EDL validation, subtitle
-export, FCPXML export, preview rendering, and Resolve handoff. Ask for
-permission before installing it:
+CLI, stop before the video workflow. Explain that the skill instructions are
+installed but the Python helper CLI is still required for media inventory,
+transcription, EDL validation, subtitle export, FCPXML export, preview
+rendering, evaluation, and Resolve handoff. Ask for permission before installing
+it:
 
 ```bash
 uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
@@ -63,14 +64,21 @@ uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/lud
 If `uv` is missing too, ask the user to install `uv` or follow the manual Python
 helper setup in `install.md`.
 
-If `vtc` is not found but `uv` is available, run the CLI through uv instead:
+Do not silently replace `vtc` with a hand-written FFmpeg/Python workflow. Only
+use a manual fallback if the user explicitly refuses to install `vtc` or `uv`
+and still asks you to continue. When using that degraded path, state that normal
+validation, preview QA, evaluation, and exports may be incomplete compared with
+the helper CLI workflow.
+
+If the user approves using `uv` without installing the tool permanently, you may
+run individual helper commands through uv:
 
 ```bash
 uv tool run --from "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main" vtc
 ```
 
-Do not stop just because the bare `vtc` command is missing; try the uv fallback
-before asking the user to reinstall.
+Treat `uv tool run` as an approved helper-CLI path, not as permission to bypass
+the helper workflow.
 
 ## User-Facing Request Handling
 

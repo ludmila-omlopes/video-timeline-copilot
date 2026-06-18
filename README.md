@@ -58,7 +58,9 @@ it exists on disk, including ignored folders such as `.venv` if they are present
 
 `skills.sh` does not run post-install hooks from skills. If the helper CLI is
 not installed when the skill is first used, the skill tells the agent to ask
-before running the `uv tool install` command above.
+before running the `uv tool install` command above. The agent should only use a
+manual FFmpeg/Python fallback if the user refuses to install `vtc` or `uv` and
+still asks it to continue.
 
 If you prefer one command that installs the helper CLI and registers the skill
 for Claude and Codex, use the bundled installer:
