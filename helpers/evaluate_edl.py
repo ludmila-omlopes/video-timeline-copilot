@@ -50,6 +50,10 @@ def _qa_warnings(report: dict, *, allow_record_gaps: bool) -> list[str]:
     return warnings
 
 
+def _is_blocking_cut_warning(warning: str) -> bool:
+    return "keeps a long" in warning and "transcript gap" in warning
+
+
 def _revision_guidance(blockers: list[str], warnings: list[str]) -> list[str]:
     guidance = []
     if any(item.startswith("EDL validation failed") for item in blockers):
@@ -98,12 +102,17 @@ def evaluate_edl(
         criteria.append(_criterion("export_validity", "pass"))
 
     cut_warnings = [] if validation_errors else cut_quality_warnings(edl_path)
-    if cut_warnings and strict_cut_warnings:
-        blockers.extend(f"cut-quality warning: {warning}" for warning in cut_warnings)
+    blocking_cut_warnings = [
+        warning for warning in cut_warnings if strict_cut_warnings or _is_blocking_cut_warning(warning)
+    ]
+    nonblocking_cut_warnings = [warning for warning in cut_warnings if warning not in blocking_cut_warnings]
+    if blocking_cut_warnings:
+        blockers.extend(f"cut-quality warning: {warning}" for warning in blocking_cut_warnings)
         criteria.append(_criterion("clip_boundaries", "fail", cut_warnings))
-    elif cut_warnings:
-        warnings.extend(f"cut-quality warning: {warning}" for warning in cut_warnings)
-        criteria.append(_criterion("clip_boundaries", "warn", cut_warnings))
+        warnings.extend(f"cut-quality warning: {warning}" for warning in nonblocking_cut_warnings)
+    elif nonblocking_cut_warnings:
+        warnings.extend(f"cut-quality warning: {warning}" for warning in nonblocking_cut_warnings)
+        criteria.append(_criterion("clip_boundaries", "warn", nonblocking_cut_warnings))
     else:
         criteria.append(_criterion("clip_boundaries", "pass"))
 

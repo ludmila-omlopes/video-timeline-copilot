@@ -12,10 +12,10 @@ from helpers.media_tools import find_ffmpeg
 
 
 STYLE_DEFAULTS = {
-    "social": {"padding": 0.12, "min_silence": 0.35, "min_segment": 0.45, "merge_gap": 0.18},
-    "documentary": {"padding": 0.25, "min_silence": 0.7, "min_segment": 0.8, "merge_gap": 0.35},
-    "highlight": {"padding": 0.18, "min_silence": 0.5, "min_segment": 0.6, "merge_gap": 0.25},
-    "longform": {"padding": 0.35, "min_silence": 0.9, "min_segment": 1.0, "merge_gap": 0.5},
+    "social": {"padding": 0.12, "min_silence": 0.35, "min_segment": 0.45, "merge_gap": 0.18, "max_word_gap": 0.55},
+    "documentary": {"padding": 0.25, "min_silence": 0.7, "min_segment": 0.8, "merge_gap": 0.35, "max_word_gap": 0.8},
+    "highlight": {"padding": 0.18, "min_silence": 0.5, "min_segment": 0.6, "merge_gap": 0.25, "max_word_gap": 0.65},
+    "longform": {"padding": 0.35, "min_silence": 0.9, "min_segment": 1.0, "merge_gap": 0.5, "max_word_gap": 1.2},
 }
 
 
@@ -117,6 +117,54 @@ def snap_to_words(ranges: list[dict], words: list[dict], padding: float, total_d
     return snapped
 
 
+def split_ranges_on_word_gaps(
+    ranges: list[dict],
+    words: list[dict],
+    *,
+    max_word_gap: float,
+    padding: float,
+    total_duration: float,
+) -> list[dict]:
+    padded_ranges = pad_ranges(ranges, padding, total_duration)
+    if not words:
+        return padded_ranges
+    if max_word_gap <= 0:
+        return snap_to_words(padded_ranges, words, padding, total_duration)
+
+    split_ranges = []
+    ordered_words = sorted(words, key=lambda word: float(word["start"]))
+    for item in ranges:
+        overlapped = [
+            word
+            for word in ordered_words
+            if float(word["end"]) >= float(item["start"]) and float(word["start"]) <= float(item["end"])
+        ]
+        if not overlapped:
+            split_ranges.extend(pad_ranges([item], padding, total_duration))
+            continue
+
+        chunk = [overlapped[0]]
+        for word in overlapped[1:]:
+            gap = float(word["start"]) - float(chunk[-1]["end"])
+            if gap > max_word_gap:
+                split_ranges.append(
+                    {
+                        "start": max(0.0, float(chunk[0]["start"]) - padding),
+                        "end": min(total_duration, float(chunk[-1]["end"]) + padding),
+                    }
+                )
+                chunk = [word]
+            else:
+                chunk.append(word)
+        split_ranges.append(
+            {
+                "start": max(0.0, float(chunk[0]["start"]) - padding),
+                "end": min(total_duration, float(chunk[-1]["end"]) + padding),
+            }
+        )
+    return [item for item in split_ranges if item["end"] > item["start"]]
+
+
 def pad_ranges(ranges: list[dict], padding: float, total_duration: float) -> list[dict]:
     return [
         {"start": max(0.0, item["start"] - padding), "end": min(total_duration, item["end"] + padding)}
@@ -137,6 +185,42 @@ def merge_ranges(ranges: list[dict], merge_gap: float, min_segment: float) -> li
     return merged
 
 
+def range_has_long_word_gap(words: list[dict], start: float, end: float, max_word_gap: float) -> bool:
+    overlapped = sorted(
+        [word for word in words if float(word["end"]) > start and float(word["start"]) < end],
+        key=lambda word: float(word["start"]),
+    )
+    for previous, current in zip(overlapped, overlapped[1:]):
+        if float(current["start"]) - float(previous["end"]) > max_word_gap:
+            return True
+    return False
+
+
+def merge_ranges_preserving_word_gaps(
+    ranges: list[dict],
+    words: list[dict],
+    *,
+    merge_gap: float,
+    min_segment: float,
+    max_word_gap: float,
+) -> list[dict]:
+    if not words or max_word_gap <= 0:
+        return merge_ranges(ranges, merge_gap, min_segment)
+
+    merged: list[dict] = []
+    for item in sorted(ranges, key=lambda value: value["start"]):
+        if item["end"] - item["start"] < min_segment:
+            continue
+        if merged and item["start"] - merged[-1]["end"] <= merge_gap:
+            proposed_start = float(merged[-1]["start"])
+            proposed_end = max(float(merged[-1]["end"]), float(item["end"]))
+            if not range_has_long_word_gap(words, proposed_start, proposed_end, max_word_gap):
+                merged[-1]["end"] = proposed_end
+                continue
+        merged.append(dict(item))
+    return merged
+
+
 def draft_ranges(
     video: Path,
     edit_dir: Path,
@@ -146,16 +230,32 @@ def draft_ranges(
     padding: float,
     min_segment: float,
     merge_gap: float,
+    max_word_gap: float,
     word_snap: bool,
 ) -> tuple[list[dict], list[dict], float]:
     media_info = ffprobe(video)
     total_duration = float(media_info.get("duration") or 0.0)
     silences = detect_silences(video, noise, min_silence)
     ranges = complement_silences(silences, total_duration)
-    ranges = pad_ranges(ranges, padding, total_duration)
     if word_snap:
-        ranges = snap_to_words(ranges, load_words(edit_dir, video), padding, total_duration)
-    ranges = merge_ranges(ranges, merge_gap, min_segment)
+        words = load_words(edit_dir, video)
+        ranges = split_ranges_on_word_gaps(
+            ranges,
+            words,
+            max_word_gap=max_word_gap,
+            padding=padding,
+            total_duration=total_duration,
+        )
+        ranges = merge_ranges_preserving_word_gaps(
+            ranges,
+            words,
+            merge_gap=merge_gap,
+            min_segment=min_segment,
+            max_word_gap=max_word_gap,
+        )
+    else:
+        ranges = pad_ranges(ranges, padding, total_duration)
+        ranges = merge_ranges(ranges, merge_gap, min_segment)
     return ranges, silences, total_duration
 
 
@@ -243,6 +343,7 @@ def main() -> None:
     parser.add_argument("--padding", type=float, default=None, help="Pre/post roll kept around speech in seconds")
     parser.add_argument("--min-segment", type=float, default=None, help="Drop kept ranges shorter than this many seconds")
     parser.add_argument("--merge-gap", type=float, default=None, help="Merge kept ranges separated by this many seconds or less")
+    parser.add_argument("--max-word-gap", type=float, default=None, help="Split transcript word gaps longer than this many seconds")
     parser.add_argument("--no-word-snap", action="store_true", help="Do not use transcript word timings to adjust cut points")
     parser.add_argument("--project-name", default=None)
     parser.add_argument("--timeline-name", default=None)
@@ -263,6 +364,7 @@ def main() -> None:
         "padding": args.padding if args.padding is not None else defaults["padding"],
         "min_segment": args.min_segment if args.min_segment is not None else defaults["min_segment"],
         "merge_gap": args.merge_gap if args.merge_gap is not None else defaults["merge_gap"],
+        "max_word_gap": args.max_word_gap if args.max_word_gap is not None else defaults["max_word_gap"],
         "word_snap": not args.no_word_snap,
     }
     ranges, silences, total_duration = draft_ranges(
@@ -273,6 +375,7 @@ def main() -> None:
         padding=settings["padding"],
         min_segment=settings["min_segment"],
         merge_gap=settings["merge_gap"],
+        max_word_gap=settings["max_word_gap"],
         word_snap=settings["word_snap"],
     )
     if not ranges:

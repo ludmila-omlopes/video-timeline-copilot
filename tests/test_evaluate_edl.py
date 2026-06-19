@@ -130,3 +130,26 @@ def test_evaluate_edl_flags_transform_coverage_failure(tmp_path: Path) -> None:
 
     assert report["status"] == "needs_revision"
     assert any("empty frame area" in item for item in report["blockers"])
+
+
+def test_evaluate_edl_blocks_long_transcript_gap(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path)
+    transcript_dir = edl_path.parent / "transcripts"
+    transcript_dir.mkdir()
+    (transcript_dir / "clip.json").write_text(
+        json.dumps(
+            {
+                "words": [
+                    {"start": 0.5, "end": 1.0, "text": "before"},
+                    {"start": 1.9, "end": 2.0, "text": "after"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    qa_path = write_qa_report(edl_path)
+
+    report = evaluate_edl(edl_path, qa_report_path=qa_path, require_preview=True)
+
+    assert report["status"] == "needs_revision"
+    assert any("transcript gap" in item for item in report["blockers"])

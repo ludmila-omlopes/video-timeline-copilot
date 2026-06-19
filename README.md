@@ -223,7 +223,9 @@ the cleanest complete version of a restarted sentence or repeated point unless
 the repetition is intentionally part of the video.
 
 `vtc draft-silence-cut` creates an editable rough cut by detecting silence with
-FFmpeg and writing kept ranges into `edit/edl.json`. Defaults are conservative:
+FFmpeg, then using transcript word timestamps to split long no-speech gaps when
+transcripts are available. It writes kept ranges into `edit/edl.json`. Defaults
+are conservative:
 
 ```powershell
 vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit --style documentary
@@ -236,12 +238,16 @@ Useful controls:
 - `--padding 0.25`: pre/post-roll kept around detected activity.
 - `--min-segment 0.8`: discard tiny kept fragments.
 - `--merge-gap 0.35`: merge nearby kept ranges.
+- `--max-word-gap 0.8`: split transcript word gaps longer than this many seconds.
 - `--style social|highlight|documentary|longform`: pacing preset.
 - `--no-word-snap`: skip transcript word-boundary adjustment.
 
 When `edit/transcripts/<source>.json` exists, the helper adjusts cut points to
-word timings so draft silence cuts do not trim through spoken words. See
+word timings so draft silence cuts do not trim through spoken words, and it
+removes long pauses even when the audio is not technically silent. See
 [docs/audio-analysis.md](docs/audio-analysis.md) for detector tradeoffs.
+EDL validation reports kept transcript gaps longer than the configured
+`max_word_gap`; self-evaluation treats those long gaps as blockers.
 
 If the FCPXML has already been created and you want to keep updating that same
 file instead of choosing new output names, run:

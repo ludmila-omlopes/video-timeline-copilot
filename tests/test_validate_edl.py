@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from helpers.validate_edl import cut_inside_word, validate
+from helpers.validate_edl import cut_inside_word, cut_quality_warnings, transcript_gaps_in_range, validate
 
 
 def write_edl(
@@ -84,3 +84,35 @@ def test_cut_inside_word_detects_strict_interior_but_not_boundary_tolerance() ->
     assert cut_inside_word(1.5, words) == words[0]
     assert cut_inside_word(1.01, words) is None
     assert cut_inside_word(1.99, words) is None
+
+
+def test_transcript_gaps_in_range_reports_long_no_word_pause() -> None:
+    words = [
+        {"start": 0.5, "end": 1.0, "text": "before"},
+        {"start": 4.0, "end": 4.5, "text": "after"},
+    ]
+
+    assert transcript_gaps_in_range(words, 0.0, 6.0, max_word_gap=0.8) == [
+        {"start": 1.0, "end": 4.0, "duration": 3.0}
+    ]
+
+
+def test_cut_quality_warnings_report_long_transcript_gap_inside_kept_range(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path, range_overrides={"source_start": 0.0, "source_end": 6.0})
+    transcript_dir = edl_path.parent / "transcripts"
+    transcript_dir.mkdir()
+    (transcript_dir / "clip.json").write_text(
+        json.dumps(
+            {
+                "words": [
+                    {"start": 0.5, "end": 1.0, "text": "before"},
+                    {"start": 4.0, "end": 4.5, "text": "after"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    warnings = cut_quality_warnings(edl_path)
+
+    assert any("keeps a long 3.000s transcript gap" in warning for warning in warnings)

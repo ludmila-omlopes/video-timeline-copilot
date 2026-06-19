@@ -151,9 +151,10 @@ For simple requests, choose conservative defaults:
   timestamp gaps, cut gaps longer than about 0.8 seconds, and add about 0.15
   seconds of padding before and after speech ranges. Prefer
   `vtc draft-silence-cut` for the first deterministic pass when the user wants
-  mechanical silence removal, then refine the generated EDL if needed. Also
-  collapse repeated takes: if the speaker restarts the same sentence or repeats
-  the same point nearby, include only one version.
+  mechanical silence removal; it removes transcript word gaps even when the
+  audio is not technically silent. Then refine the generated EDL if needed.
+  Also collapse repeated takes: if the speaker restarts the same sentence or
+  repeats the same point nearby, include only one version.
 - "short edit" without a duration: create a 10-30 second rough cut depending on
   source length.
 - "highlight" / "best moments": prioritize clear, self-contained transcript

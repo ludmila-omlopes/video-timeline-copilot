@@ -32,6 +32,21 @@ def cut_inside_word(cut_time: float, words: list[dict], tolerance: float = 0.025
     return None
 
 
+def transcript_gaps_in_range(words: list[dict], start: float, end: float, max_word_gap: float) -> list[dict]:
+    overlapped = sorted(
+        [word for word in words if word["end"] > start and word["start"] < end],
+        key=lambda word: float(word["start"]),
+    )
+    gaps = []
+    for previous, current in zip(overlapped, overlapped[1:]):
+        gap_start = float(previous["end"])
+        gap_end = float(current["start"])
+        duration = gap_end - gap_start
+        if duration > max_word_gap:
+            gaps.append({"start": gap_start, "end": gap_end, "duration": duration})
+    return gaps
+
+
 def validate(edl_path: Path) -> list[str]:
     errors = []
     edl = read_json(edl_path)
@@ -102,6 +117,8 @@ def cut_quality_warnings(edl_path: Path) -> list[str]:
     edl = read_json(edl_path)
     root = edl_path.parent.parent
     edit_dir = edl_path.parent
+    settings = ((edl.get("metadata") or {}).get("silence_cut_settings") or {})
+    max_word_gap = float(settings.get("max_word_gap", 0.8))
 
     for timeline_index, timeline in enumerate(edl.get("timelines") or []):
         sources = timeline.get("sources", {})
@@ -124,6 +141,17 @@ def cut_quality_warnings(edl_path: Path) -> list[str]:
                             f"timelines[{timeline_index}].ranges[{range_index}].{key} cuts inside word "
                             f"{word.get('text', '').strip()!r} ({word['start']:.3f}-{word['end']:.3f})"
                         )
+                for gap in transcript_gaps_in_range(
+                    words,
+                    float(item.get("source_start", 0)),
+                    float(item.get("source_end", 0)),
+                    max_word_gap,
+                ):
+                    warnings.append(
+                        f"timelines[{timeline_index}].ranges[{range_index}] keeps a long "
+                        f"{gap['duration']:.3f}s transcript gap ({gap['start']:.3f}-{gap['end']:.3f}); "
+                        "split or trim the range when removing silence"
+                    )
 
             track = int(item.get("track", 1))
             previous = previous_by_track.get(track)
