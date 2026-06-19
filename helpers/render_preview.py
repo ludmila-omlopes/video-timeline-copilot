@@ -10,6 +10,7 @@ from helpers.common import ensure_within, read_json, resolve_relative, safe_file
 from helpers.export_fcpxml import timeline_duration
 from helpers.media_tools import find_ffmpeg, stream_types
 from helpers.transforms import resolve_transform
+from helpers.validate_edl import validate
 
 
 def preview_path(edl_path: Path, edl: dict | None = None, timeline: dict | None = None) -> Path:
@@ -198,6 +199,10 @@ def _concat_args(segment_paths: list[Path], list_path: Path, out_path: Path) -> 
 
 
 def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: str | None = None) -> Path:
+    validation_errors = validate(edl_path)
+    if validation_errors:
+        raise ValueError("EDL validation failed: " + "; ".join(validation_errors))
+
     edl = read_json(edl_path)
     root = edl_path.parent.parent
     fps = float(edl["fps"])
@@ -224,14 +229,13 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
         tmp_dir = Path(tmp)
         segments: list[Path] = []
         cursor = 0.0
+        frame_tolerance = 0.5 / fps
         for index, item in enumerate(ranges):
             record_start = float(item.get("record_start", cursor))
-            if record_start > cursor:
-                gap_duration = record_start - cursor
-                gap_path = tmp_dir / f"{index:04d}_gap.mp4"
-                subprocess.run(_gap_args(gap_duration, width, height, fps, gap_path), check=True)
-                segments.append(gap_path)
-                cursor = record_start
+            if record_start - cursor > frame_tolerance:
+                raise ValueError(f"range {index + 1} creates a record gap; validate the EDL before rendering")
+            if cursor - record_start > frame_tolerance:
+                raise ValueError(f"range {index + 1} overlaps the previous clip; validate the EDL before rendering")
 
             source_start = float(item["source_start"])
             source_end = float(item["source_end"])
@@ -258,10 +262,8 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
             cursor = max(cursor, record_start + duration)
 
         expected = timeline_duration(timeline)
-        if expected > cursor:
-            gap_path = tmp_dir / f"{len(segments):04d}_tail_gap.mp4"
-            subprocess.run(_gap_args(expected - cursor, width, height, fps, gap_path), check=True)
-            segments.append(gap_path)
+        if expected - cursor > max(0.1, 1 / fps):
+            raise ValueError("timeline duration extends beyond the last clip; validate the EDL before rendering")
 
         subprocess.run(_concat_args(segments, tmp_dir / "concat.txt", destination), check=True)
 

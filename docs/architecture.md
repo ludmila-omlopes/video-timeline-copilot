@@ -46,8 +46,10 @@ target multiple backends later. Today it supports:
 ### 4. Validation Layer
 
 `helpers/validate_edl.py` checks the EDL before any editor-specific backend runs.
-It also emits cut-quality warnings, such as transcript-backed cuts that appear
-to land inside words, without turning those warnings into hard schema errors.
+It blocks invalid timeline timing, including record gaps, overlapping clips, and
+clips shorter than the minimum duration. It also emits cut-quality warnings,
+such as transcript-backed cuts that appear to land inside words, without turning
+those warnings into hard schema errors.
 
 Validation is deliberately separate from Resolve so offline workflows still get
 useful feedback.
@@ -57,7 +59,7 @@ useful feedback.
 `helpers/render_preview.py` can render an MP4 proxy directly from `edl.json`.
 `helpers/qa_preview.py` compares that proxy against the EDL and writes technical
 QA output such as duration checks, audio-only/video-only regions, record gaps,
-and a contact sheet.
+record overlaps, short clips, and a contact sheet.
 
 `helpers/evaluate_edl.py` is the final handoff gate. It combines EDL validation,
 cut-quality warnings, preview QA, and explicit agent-review criteria into

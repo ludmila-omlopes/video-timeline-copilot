@@ -17,7 +17,8 @@ Default behavior:
 - require a configurable minimum silence duration
 - keep configurable pre/post-roll padding around detected activity
 - merge nearby kept ranges
-- drop very short kept ranges
+- drop very short kept ranges; the CLI enforces a minimum 0.8 second clip
+  duration even if a lower `--min-segment` is requested
 - use transcript word timestamps, when present, to avoid cutting through spoken
   words
 - split transcript word gaps longer than the preset or `--max-word-gap`, even
@@ -29,6 +30,8 @@ timeline for agent or manual refinement, not a finished creative edit.
 Validation reports kept transcript gaps longer than the configured
 `max_word_gap`, and self-evaluation blocks those long gaps so awkward pauses do
 not silently pass QA.
+Validation also blocks record gaps, record overlaps, and clips shorter than the
+minimum duration.
 
 ## Styles
 

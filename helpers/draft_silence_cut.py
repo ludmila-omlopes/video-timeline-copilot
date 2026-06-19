@@ -9,12 +9,13 @@ from pathlib import Path
 from helpers.common import read_json, safe_filename, write_json
 from helpers.inventory import ffprobe
 from helpers.media_tools import find_ffmpeg
+from helpers.validate_edl import MIN_CLIP_DURATION_SECONDS
 
 
 STYLE_DEFAULTS = {
-    "social": {"padding": 0.12, "min_silence": 0.35, "min_segment": 0.45, "merge_gap": 0.18, "max_word_gap": 0.55},
+    "social": {"padding": 0.12, "min_silence": 0.35, "min_segment": 0.8, "merge_gap": 0.18, "max_word_gap": 0.55},
     "documentary": {"padding": 0.25, "min_silence": 0.7, "min_segment": 0.8, "merge_gap": 0.35, "max_word_gap": 0.8},
-    "highlight": {"padding": 0.18, "min_silence": 0.5, "min_segment": 0.6, "merge_gap": 0.25, "max_word_gap": 0.65},
+    "highlight": {"padding": 0.18, "min_silence": 0.5, "min_segment": 0.8, "merge_gap": 0.25, "max_word_gap": 0.65},
     "longform": {"padding": 0.35, "min_silence": 0.9, "min_segment": 1.0, "merge_gap": 0.5, "max_word_gap": 1.2},
 }
 
@@ -341,7 +342,12 @@ def main() -> None:
     parser.add_argument("--noise", default="-35dB", help="FFmpeg silencedetect noise threshold, e.g. -35dB")
     parser.add_argument("--min-silence", type=float, default=None, help="Minimum silence duration in seconds")
     parser.add_argument("--padding", type=float, default=None, help="Pre/post roll kept around speech in seconds")
-    parser.add_argument("--min-segment", type=float, default=None, help="Drop kept ranges shorter than this many seconds")
+    parser.add_argument(
+        "--min-segment",
+        type=float,
+        default=None,
+        help=f"Drop kept ranges shorter than this many seconds; minimum enforced is {MIN_CLIP_DURATION_SECONDS:.1f}s",
+    )
     parser.add_argument("--merge-gap", type=float, default=None, help="Merge kept ranges separated by this many seconds or less")
     parser.add_argument("--max-word-gap", type=float, default=None, help="Split transcript word gaps longer than this many seconds")
     parser.add_argument("--no-word-snap", action="store_true", help="Do not use transcript word timings to adjust cut points")
@@ -362,7 +368,10 @@ def main() -> None:
         "noise": args.noise,
         "min_silence": args.min_silence if args.min_silence is not None else defaults["min_silence"],
         "padding": args.padding if args.padding is not None else defaults["padding"],
-        "min_segment": args.min_segment if args.min_segment is not None else defaults["min_segment"],
+        "min_segment": max(
+            args.min_segment if args.min_segment is not None else defaults["min_segment"],
+            MIN_CLIP_DURATION_SECONDS,
+        ),
         "merge_gap": args.merge_gap if args.merge_gap is not None else defaults["merge_gap"],
         "max_word_gap": args.max_word_gap if args.max_word_gap is not None else defaults["max_word_gap"],
         "word_snap": not args.no_word_snap,

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from helpers.build_resolve_project import connect_resolve, create_timelines_from_edl, fail
 from helpers.common import read_json, write_json
+from helpers.validate_edl import validate
 
 
 def project_fps(project) -> float | None:
@@ -24,6 +25,10 @@ def update_timelines(
     replace_existing: bool,
     allow_fps_mismatch: bool,
 ) -> dict:
+    validation_errors = validate(edl_path)
+    if validation_errors:
+        fail("EDL validation failed: " + "; ".join(validation_errors))
+
     edl = read_json(edl_path)
     footage_root = edl_path.parent.parent
     resolve_out = edl_path.parent / "resolve"

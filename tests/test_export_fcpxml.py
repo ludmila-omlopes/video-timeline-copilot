@@ -42,7 +42,7 @@ def write_fcpx_edl(
                 "ranges": ranges
                 or [
                     {"source": "A001", "source_start": 0.0, "source_end": 1.0, "record_start": 0.0},
-                    {"source": "A001", "source_start": 2.0, "source_end": 3.0, "record_start": 2.0},
+                    {"source": "A001", "source_start": 2.0, "source_end": 3.0, "record_start": 1.0},
                 ],
             }
         ],
@@ -72,7 +72,7 @@ def test_timeline_duration_uses_latest_record_end() -> None:
     assert timeline_duration(timeline) == 6.0
 
 
-def test_build_fcpxml_creates_root_asset_and_gap(tmp_path: Path) -> None:
+def test_build_fcpxml_creates_root_asset_without_gap(tmp_path: Path) -> None:
     edl_path, _ = write_fcpx_edl(tmp_path)
 
     root = build_fcpxml(edl_path).getroot()
@@ -81,7 +81,20 @@ def test_build_fcpxml_creates_root_asset_and_gap(tmp_path: Path) -> None:
     assert len(root.findall("./resources/asset")) == 1
     spine = root.find("./library/event/project/sequence/spine")
     assert spine is not None
-    assert spine.find("gap") is not None
+    assert spine.find("gap") is None
+
+
+def test_build_fcpxml_rejects_record_gap(tmp_path: Path) -> None:
+    edl_path, _ = write_fcpx_edl(
+        tmp_path,
+        ranges=[
+            {"source": "A001", "source_start": 0.0, "source_end": 1.0, "record_start": 0.0},
+            {"source": "A001", "source_start": 2.0, "source_end": 3.0, "record_start": 2.0},
+        ],
+    )
+
+    with pytest.raises(ValueError, match="record gap"):
+        build_fcpxml(edl_path)
 
 
 def test_build_fcpxml_adds_fill_conform_to_avoid_empty_canvas(tmp_path: Path) -> None:
@@ -122,7 +135,7 @@ def test_build_fcpxml_rejects_range_that_rounds_to_zero_frames(tmp_path: Path) -
         ranges=[{"source": "A001", "source_start": 0.0, "source_end": 0.001, "record_start": 0.0}],
     )
 
-    with pytest.raises(ValueError, match="rounds to zero frames"):
+    with pytest.raises(ValueError, match="shorter than the minimum"):
         build_fcpxml(edl_path)
 
 

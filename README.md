@@ -236,7 +236,8 @@ Useful controls:
 - `--noise -35dB`: silence threshold passed to FFmpeg `silencedetect`.
 - `--min-silence 0.7`: minimum sustained silence before a gap is removed.
 - `--padding 0.25`: pre/post-roll kept around detected activity.
-- `--min-segment 0.8`: discard tiny kept fragments.
+- `--min-segment 0.8`: discard tiny kept fragments; the CLI enforces at least
+  0.8 seconds.
 - `--merge-gap 0.35`: merge nearby kept ranges.
 - `--max-word-gap 0.8`: split transcript word gaps longer than this many seconds.
 - `--style social|highlight|documentary|longform`: pacing preset.
@@ -284,8 +285,9 @@ my-video/edit/previews/<project>_preview.mp4
 ```
 
 The renderer cuts linked audio and video together from each EDL range. If the
-timeline has record gaps, the preview includes matching black/silent sections so
-the rendered duration can be compared to the EDL.
+timeline has record gaps, overlaps, or clips shorter than the minimum clip
+duration, validation fails before preview rendering instead of creating
+black/silent filler.
 
 Run QA after rendering:
 
@@ -301,10 +303,10 @@ my-video/edit/qa/contact_sheet.jpg
 ```
 
 The report includes expected versus actual duration, cut/source counts, record
-gaps, transform zoom/position coverage, and audio-only or video-only regions
-when a range or source stream appears to lack linked audio/video. Use
-`--preview`, `--report`, `--contact-sheet`, or `--timeline` to override the
-defaults.
+gaps, record overlaps, short clips, transform zoom/position coverage, and
+audio-only or video-only regions when a range or source stream appears to lack
+linked audio/video. Use `--preview`, `--report`, `--contact-sheet`, or
+`--timeline` to override the defaults.
 
 ## Self-Evaluation
 
@@ -330,9 +332,9 @@ returns one of three statuses:
 - `blocked`: the edit still fails after `--max-attempts`; stop and report the
   blockers instead of continuing to iterate.
 
-Use `--strict-cut-warnings` when cuts inside words or tiny record gaps should
-block delivery. Use `--allow-record-gaps` when the EDL intentionally contains
-black/silent gaps.
+Record gaps, overlaps, and clips shorter than the minimum duration are always
+blockers. Use `--strict-cut-warnings` when softer cut-quality warnings, such as
+cuts inside words, should also block delivery.
 
 ## DaVinci Resolve
 

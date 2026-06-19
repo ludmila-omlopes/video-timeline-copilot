@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from helpers.build_resolve_project import create_timelines_from_edl
 
 
@@ -108,3 +110,46 @@ def test_create_timelines_compensates_resolve_zoom_for_transform_position(tmp_pa
     create_timelines_from_edl(project, FakeResolve(), edl, tmp_path)
 
     assert item.properties == {"ZoomX": 1.28, "ZoomY": 1.28, "Pan": 0.0, "Tilt": -151.2}
+
+
+def test_create_timelines_rejects_record_gap_before_resolve_import(tmp_path: Path) -> None:
+    source = tmp_path / "raw" / "clip.mp4"
+    source.parent.mkdir()
+    source.write_bytes(b"")
+    edl = {
+        "fps": 30,
+        "timelines": [
+            {
+                "name": "Main",
+                "resolution": [1920, 1080],
+                "sources": {"A001": "raw/clip.mp4"},
+                "ranges": [
+                    {"source": "A001", "source_start": 0.0, "source_end": 1.0, "record_start": 0.0},
+                    {"source": "A001", "source_start": 3.0, "source_end": 4.0, "record_start": 2.0},
+                ],
+            }
+        ],
+    }
+
+    with pytest.raises(RuntimeError, match="record gaps"):
+        create_timelines_from_edl(FakeProject(FakeMediaPool(FakeTimeline(FakeTimelineItem()))), FakeResolve(), edl, tmp_path)
+
+
+def test_create_timelines_rejects_half_second_clip_before_resolve_import(tmp_path: Path) -> None:
+    source = tmp_path / "raw" / "clip.mp4"
+    source.parent.mkdir()
+    source.write_bytes(b"")
+    edl = {
+        "fps": 30,
+        "timelines": [
+            {
+                "name": "Main",
+                "resolution": [1920, 1080],
+                "sources": {"A001": "raw/clip.mp4"},
+                "ranges": [{"source": "A001", "source_start": 0.0, "source_end": 0.5, "record_start": 0.0}],
+            }
+        ],
+    }
+
+    with pytest.raises(RuntimeError, match="shorter than"):
+        create_timelines_from_edl(FakeProject(FakeMediaPool(FakeTimeline(FakeTimelineItem()))), FakeResolve(), edl, tmp_path)

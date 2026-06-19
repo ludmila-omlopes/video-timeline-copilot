@@ -7,6 +7,7 @@ import xml.etree.ElementTree as ET
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
 from helpers.transforms import resolve_transform
+from helpers.validate_edl import validate
 
 
 def fcpx_time(seconds: float, fps: float) -> str:
@@ -78,6 +79,10 @@ def add_asset(
 
 
 def build_fcpxml(edl_path: Path) -> ET.ElementTree:
+    validation_errors = validate(edl_path)
+    if validation_errors:
+        raise ValueError("EDL validation failed: " + "; ".join(validation_errors))
+
     edl = read_json(edl_path)
     footage_root = edl_path.parent.parent
     fps = float(edl["fps"])
@@ -152,18 +157,9 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
             cursor_frames = fcpx_frames(cursor, fps)
             record_start_frames = fcpx_frames(record_start, fps)
             if record_start_frames > cursor_frames:
-                gap_duration_frames = record_start_frames - cursor_frames
-                ET.SubElement(
-                    spine,
-                    "gap",
-                    {
-                        "name": "Gap",
-                        "offset": fcpx_time_from_frames(cursor_frames, fps),
-                        "start": "0s",
-                        "duration": fcpx_time_from_frames(gap_duration_frames, fps),
-                    },
-                )
-                cursor = record_start
+                raise ValueError(f"range {index + 1} creates a record gap; validate the EDL before export")
+            if record_start_frames < cursor_frames:
+                raise ValueError(f"range {index + 1} overlaps the previous clip; validate the EDL before export")
 
             source_start = float(item["source_start"])
             source_end = float(item["source_end"])
@@ -223,10 +219,12 @@ def load_media_index(edit_dir: Path, footage_root: Path) -> dict[Path, dict]:
 
 def timeline_duration(timeline: dict) -> float:
     end = 0.0
-    for item in timeline["ranges"]:
-        record_start = float(item.get("record_start", 0.0))
+    cursor = 0.0
+    for item in sorted(timeline["ranges"], key=lambda value: float(value.get("record_start", 0.0))):
+        record_start = float(item.get("record_start", cursor))
         duration = float(item["source_end"]) - float(item["source_start"])
         end = max(end, record_start + duration)
+        cursor = max(cursor, record_start + duration)
     return end
 
 

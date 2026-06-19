@@ -78,6 +78,38 @@ def test_validate_reports_invalid_fps_range_and_media_type(tmp_path: Path) -> No
     assert any("media_type must be av" in error for error in errors)
 
 
+def test_validate_reports_record_gap(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path)
+    edl = json.loads(edl_path.read_text(encoding="utf-8"))
+    edl["timelines"][0]["ranges"].append(
+        {"source": "A001", "source_start": 3.0, "source_end": 4.0, "record_start": 3.0}
+    )
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+
+    errors = validate(edl_path)
+
+    assert any("record gap" in error for error in errors)
+
+
+def test_validate_reports_record_overlap(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path)
+    edl = json.loads(edl_path.read_text(encoding="utf-8"))
+    edl["timelines"][0]["ranges"].append(
+        {"source": "A001", "source_start": 3.0, "source_end": 4.0, "record_start": 1.5}
+    )
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+
+    errors = validate(edl_path)
+
+    assert any("overlaps the previous clip" in error for error in errors)
+
+
+def test_validate_reports_half_second_clip(tmp_path: Path) -> None:
+    errors = validate(write_edl(tmp_path, range_overrides={"source_start": 0.0, "source_end": 0.5}))
+
+    assert any("shorter than the minimum" in error for error in errors)
+
+
 def test_cut_inside_word_detects_strict_interior_but_not_boundary_tolerance() -> None:
     words = [{"start": 1.0, "end": 2.0, "text": "hello"}]
 

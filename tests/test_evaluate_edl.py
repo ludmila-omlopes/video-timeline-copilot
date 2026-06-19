@@ -132,6 +132,34 @@ def test_evaluate_edl_flags_transform_coverage_failure(tmp_path: Path) -> None:
     assert any("empty frame area" in item for item in report["blockers"])
 
 
+def test_evaluate_edl_blocks_record_gap(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path)
+    edl = json.loads(edl_path.read_text(encoding="utf-8"))
+    edl["timelines"][0]["ranges"].append(
+        {"source": "A001", "source_start": 3.0, "source_end": 4.0, "record_start": 3.0}
+    )
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+    qa_path = write_qa_report(edl_path)
+
+    report = evaluate_edl(edl_path, qa_report_path=qa_path, require_preview=True)
+
+    assert report["status"] == "needs_revision"
+    assert any("record gap" in item for item in report["blockers"])
+
+
+def test_evaluate_edl_blocks_half_second_clip(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path)
+    edl = json.loads(edl_path.read_text(encoding="utf-8"))
+    edl["timelines"][0]["ranges"][0]["source_end"] = 0.5
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+    qa_path = write_qa_report(edl_path)
+
+    report = evaluate_edl(edl_path, qa_report_path=qa_path, require_preview=True)
+
+    assert report["status"] == "needs_revision"
+    assert any("shorter than the minimum" in item for item in report["blockers"])
+
+
 def test_evaluate_edl_blocks_long_transcript_gap(tmp_path: Path) -> None:
     edl_path = write_edl(tmp_path)
     transcript_dir = edl_path.parent / "transcripts"

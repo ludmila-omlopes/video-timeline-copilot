@@ -114,7 +114,30 @@ def test_qa_preview_writes_report_without_external_probe(tmp_path: Path, monkeyp
     assert report["checks"]["preview_exists"] is True
     assert report["checks"]["duration_matches_edl"] is True
     assert report["checks"]["record_gaps_found"] is True
-    assert report["gaps"] == [{"record_start": 1.0, "record_end": 2.0, "duration": 1.0}]
+    assert report["gaps"] == [
+        {"range_index": 1, "record_start": 1.0, "record_end": 2.0, "duration": 1.0, "frames": 30}
+    ]
+
+
+def test_qa_preview_flags_half_second_clip(tmp_path: Path, monkeypatch) -> None:
+    edl_path = write_preview_edl(tmp_path)
+    edl = json.loads(edl_path.read_text(encoding="utf-8"))
+    edl["timelines"][0]["ranges"] = [
+        {"source": "A001", "source_start": 0.0, "source_end": 0.5, "record_start": 0.0}
+    ]
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+    preview = preview_path(edl_path)
+    preview.parent.mkdir()
+    preview.write_bytes(b"fake mp4")
+
+    monkeypatch.setattr("helpers.qa_preview.media_duration", lambda path: 0.5)
+    monkeypatch.setattr("helpers.qa_preview.stream_types", lambda path: {"audio", "video"})
+    monkeypatch.setattr("helpers.qa_preview.build_contact_sheet", lambda preview_path, out_path: True)
+
+    report = qa_preview(edl_path)
+
+    assert report["checks"]["short_clips_found"] is True
+    assert report["short_clips"][0]["duration"] == 0.5
 
 
 def test_qa_preview_flags_transform_zoom_that_exposes_empty_frame_area(tmp_path: Path, monkeypatch) -> None:
