@@ -20,9 +20,11 @@ environment files into the installed skill.
 
 `skills.sh` does not run post-install hooks from skills. If the helper CLI is
 not installed when the skill is first used, the skill tells the agent to ask
-before running the `uv tool install` command above. Manual FFmpeg/Python
-fallbacks are reserved for cases where the user refuses to install `vtc` or
-`uv` and still asks the agent to continue.
+before running the install commands already documented in `SKILL.md`. The skill
+also tells the agent to refresh PATH after installing `uv`/`vtc` and verify
+`vtc --help` in the current shell before continuing. Manual FFmpeg/Python
+fallbacks are reserved for cases where the user refuses to install `vtc` or `uv`
+and still asks the agent to continue.
 
 ## Bundled installer
 

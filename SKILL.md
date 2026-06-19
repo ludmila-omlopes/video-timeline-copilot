@@ -43,8 +43,12 @@ explicitly asks for a render.
 Use the `vtc` command when it is available on `PATH`. The recommended installer
 uses `uv tool install` so `vtc` should be installed as an isolated tool.
 
-Before running the workflow for the first time in an environment, check whether
-the helper CLI is available:
+Before running the workflow for the first time in an environment, bootstrap the
+helper CLI. Do not ask the user how to install `uv` or `vtc`; the commands are
+listed here. Ask for approval to run installation commands when required by the
+agent environment, then run the appropriate steps.
+
+First check whether the helper CLI is available:
 
 ```bash
 vtc --help
@@ -57,12 +61,56 @@ transcription, EDL validation, subtitle export, FCPXML export, preview
 rendering, evaluation, and Resolve handoff. Ask for permission before installing
 it:
 
-```bash
-uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+Windows PowerShell:
+
+```powershell
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+  winget install --id astral-sh.uv -e
+}
+
+$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+$env:Path = "$machinePath;$userPath"
+
+$uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
+if (-not $uv) {
+  $uv = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter uv.exe -ErrorAction SilentlyContinue |
+    Select-Object -First 1 -ExpandProperty FullName
+}
+if (-not $uv) {
+  throw "uv is installed or requested, but uv.exe was not found. Reopen PowerShell or install uv from https://docs.astral.sh/uv/"
+}
+
+& $uv tool install --force "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+
+$toolDir = "$env:USERPROFILE\.local\bin"
+if (Test-Path $toolDir) {
+  $env:Path = "$toolDir;$env:Path"
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  if ($userPath -notlike "*$toolDir*") {
+    [Environment]::SetEnvironmentVariable("Path", "$userPath;$toolDir", "User")
+  }
+}
+
+vtc --help
 ```
 
-If `uv` is missing too, ask the user to install `uv` or follow the manual Python
-helper setup in `install.md`.
+macOS/Linux:
+
+```bash
+if ! command -v uv >/dev/null 2>&1; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+export PATH="$HOME/.local/bin:$PATH"
+vtc --help
+```
+
+After installation, always verify `vtc --help` works in the current shell before
+continuing. If installation succeeded but `vtc` is still missing, refresh PATH
+from user/machine environment variables and add the uv tool directory for the
+current session. On Windows that is usually `%USERPROFILE%\.local\bin`.
 
 Do not silently replace `vtc` with a hand-written FFmpeg/Python workflow. Only
 use a manual fallback if the user explicitly refuses to install `vtc` or `uv`
