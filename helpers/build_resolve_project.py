@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename, seconds_to_frames, write_json
+from helpers.transforms import resolve_transform
 
 
 def load_resolve_module():
@@ -116,14 +117,13 @@ def create_timelines_from_edl(project, resolve, edl: dict, footage_root: Path, *
         for index, timeline_item in enumerate(video_items):
             if index >= len(timeline_spec["ranges"]):
                 break
-            transform = timeline_spec["ranges"][index].get("transform") or {}
-            zoom = float(transform.get("zoom", 1.0))
+            transform = resolve_transform(timeline_spec["ranges"][index].get("transform"), int(width), int(height))
             timeline_item.SetProperty(
                 {
-                    "ZoomX": zoom,
-                    "ZoomY": zoom,
-                    "Pan": float(transform.get("pan", 0)),
-                    "Tilt": float(transform.get("tilt", 0)),
+                    "ZoomX": transform.zoom,
+                    "ZoomY": transform.zoom,
+                    "Pan": transform.pan,
+                    "Tilt": transform.tilt,
                 }
             )
 

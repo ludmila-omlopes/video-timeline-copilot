@@ -84,6 +84,38 @@ def test_build_fcpxml_creates_root_asset_and_gap(tmp_path: Path) -> None:
     assert spine.find("gap") is not None
 
 
+def test_build_fcpxml_adds_fill_conform_to_avoid_empty_canvas(tmp_path: Path) -> None:
+    edl_path, _ = write_fcpx_edl(tmp_path)
+
+    root = build_fcpxml(edl_path).getroot()
+    conform = root.find("./library/event/project/sequence/spine/asset-clip/adjust-conform")
+
+    assert conform is not None
+    assert conform.attrib["type"] == "fill"
+
+
+def test_build_fcpxml_compensates_zoom_for_transform_position(tmp_path: Path) -> None:
+    edl_path, _ = write_fcpx_edl(
+        tmp_path,
+        ranges=[
+            {
+                "source": "A001",
+                "source_start": 0.0,
+                "source_end": 1.0,
+                "record_start": 0.0,
+                "transform": {"zoom": 1.07, "pan": 0.0, "tilt": -151.2},
+            }
+        ],
+    )
+
+    root = build_fcpxml(edl_path).getroot()
+    transform = root.find("./library/event/project/sequence/spine/asset-clip/adjust-transform")
+
+    assert transform is not None
+    assert transform.attrib["position"] == "0.000 -151.200"
+    assert transform.attrib["scale"] == "1.280 1.280"
+
+
 def test_build_fcpxml_rejects_range_that_rounds_to_zero_frames(tmp_path: Path) -> None:
     edl_path, _ = write_fcpx_edl(
         tmp_path,

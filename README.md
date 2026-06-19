@@ -295,9 +295,10 @@ my-video/edit/qa/contact_sheet.jpg
 ```
 
 The report includes expected versus actual duration, cut/source counts, record
-gaps, and audio-only or video-only regions when a range or source stream appears
-to lack linked audio/video. Use `--preview`, `--report`, `--contact-sheet`, or
-`--timeline` to override the defaults.
+gaps, transform zoom/position coverage, and audio-only or video-only regions
+when a range or source stream appears to lack linked audio/video. Use
+`--preview`, `--report`, `--contact-sheet`, or `--timeline` to override the
+defaults.
 
 ## Self-Evaluation
 

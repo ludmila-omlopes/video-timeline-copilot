@@ -248,9 +248,9 @@ there is ambiguity.
    ```
 
    Read `preview_report.json` before handoff when using this path. Treat
-   duration mismatches, audio-only/video-only regions, and unexpected record
-   gaps as issues to inspect and correct when they conflict with the intended
-   edit.
+   duration mismatches, transform coverage failures, audio-only/video-only
+   regions, and unexpected record gaps as issues to inspect and correct when
+   they conflict with the intended edit.
 
 10. Run self-evaluation before final handoff:
 

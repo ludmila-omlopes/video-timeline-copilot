@@ -35,6 +35,8 @@ def _qa_blockers(report: dict) -> list[str]:
         blockers.append("audio-only regions were detected")
     if checks.get("video_only_regions_found"):
         blockers.append("video-only regions were detected")
+    if checks.get("transform_coverage_ok") is False or checks.get("empty_space_risk_found"):
+        blockers.append("transform zoom is too low for pan/tilt and may expose empty frame area")
     return blockers
 
 
@@ -58,6 +60,8 @@ def _revision_guidance(blockers: list[str], warnings: list[str]) -> list[str]:
         guidance.append("Compare record_start values and source ranges against the rendered preview duration.")
     if any("audio-only" in item or "video-only" in item for item in blockers):
         guidance.append("Inspect source stream types and keep linked audio/video ranges unless the user explicitly asked otherwise.")
+    if any("empty frame area" in item or "transform zoom" in item for item in blockers):
+        guidance.append("Increase transform zoom or reduce pan/tilt so transformed clips fully cover the timeline frame.")
     if any("record gaps" in item for item in warnings):
         guidance.append("Close unintentional record gaps or document why the silence/black gap belongs in the edit.")
     if not guidance and blockers:

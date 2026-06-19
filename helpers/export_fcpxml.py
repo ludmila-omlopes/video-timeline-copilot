@@ -6,6 +6,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
+from helpers.transforms import resolve_transform
 
 
 def fcpx_time(seconds: float, fps: float) -> str:
@@ -189,17 +190,15 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
             )
             if item.get("reason"):
                 ET.SubElement(clip, "note").text = str(item["reason"])
-            transform = item.get("transform") or {}
-            zoom = float(transform.get("zoom", 1.0))
-            pan = float(transform.get("pan", 0.0))
-            tilt = float(transform.get("tilt", 0.0))
-            if zoom != 1.0 or pan != 0.0 or tilt != 0.0:
+            ET.SubElement(clip, "adjust-conform", {"type": "fill"})
+            transform = resolve_transform(item.get("transform"), int(width), int(height))
+            if transform.zoom != 1.0 or transform.pan != 0.0 or transform.tilt != 0.0:
                 ET.SubElement(
                     clip,
                     "adjust-transform",
                     {
-                        "position": f"{pan:.3f} {tilt:.3f}",
-                        "scale": f"{zoom:.3f} {zoom:.3f}",
+                        "position": f"{transform.pan:.3f} {transform.tilt:.3f}",
+                        "scale": f"{transform.zoom:.3f} {transform.zoom:.3f}",
                     },
                 )
             cursor = max(cursor, record_start + duration)

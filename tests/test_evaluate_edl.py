@@ -40,7 +40,12 @@ def write_edl(tmp_path: Path, *, source_exists: bool = True) -> Path:
     return edl_path
 
 
-def write_qa_report(edl_path: Path, *, duration_matches: bool = True) -> Path:
+def write_qa_report(
+    edl_path: Path,
+    *,
+    duration_matches: bool = True,
+    transform_coverage_ok: bool = True,
+) -> Path:
     report = {
         "edl": str(edl_path),
         "timeline": "Main",
@@ -55,10 +60,13 @@ def write_qa_report(edl_path: Path, *, duration_matches: bool = True) -> Path:
             "audio_only_regions_found": False,
             "video_only_regions_found": False,
             "record_gaps_found": False,
+            "transform_coverage_ok": transform_coverage_ok,
+            "empty_space_risk_found": not transform_coverage_ok,
             "contact_sheet_created": True,
         },
         "audio_only_regions": [],
         "video_only_regions": [],
+        "transform_coverage_issues": [] if transform_coverage_ok else [{"range_index": 0}],
         "gaps": [],
         "cut_count": 1,
         "source_count": 1,
@@ -112,3 +120,13 @@ def test_evaluate_edl_flags_preview_qa_failures(tmp_path: Path) -> None:
 
     assert report["status"] == "needs_revision"
     assert any("duration does not match" in item for item in report["blockers"])
+
+
+def test_evaluate_edl_flags_transform_coverage_failure(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path)
+    qa_path = write_qa_report(edl_path, transform_coverage_ok=False)
+
+    report = evaluate_edl(edl_path, qa_report_path=qa_path, require_preview=True)
+
+    assert report["status"] == "needs_revision"
+    assert any("empty frame area" in item for item in report["blockers"])

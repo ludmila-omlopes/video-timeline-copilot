@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import subprocess
 import tempfile
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
 from helpers.export_fcpxml import timeline_duration
 from helpers.media_tools import find_ffmpeg, stream_types
+from helpers.transforms import resolve_transform
 
 
 def preview_path(edl_path: Path, edl: dict | None = None, timeline: dict | None = None) -> Path:
@@ -21,6 +23,39 @@ def preview_path(edl_path: Path, edl: dict | None = None, timeline: dict | None 
     return edl_path.parent / "previews" / name
 
 
+def _even_ceiling(value: float) -> int:
+    rounded = int(math.ceil(value))
+    return rounded if rounded % 2 == 0 else rounded + 1
+
+
+def _clamp(value: float, lower: float, upper: float) -> float:
+    return min(max(value, lower), upper)
+
+
+def _video_filter(width: int, height: int, fps: float, transform: dict | None = None) -> str:
+    filters = [
+        f"fps={fps}",
+        f"scale={width}:{height}:force_original_aspect_ratio=increase",
+        f"crop={width}:{height}",
+    ]
+    resolved = resolve_transform(transform, width, height)
+    if resolved.zoom != 1.0 or resolved.pan != 0.0 or resolved.tilt != 0.0:
+        scaled_width = _even_ceiling(width * resolved.zoom)
+        scaled_height = _even_ceiling(height * resolved.zoom)
+        extra_x = scaled_width - width
+        extra_y = scaled_height - height
+        crop_x = _clamp((extra_x / 2.0) - resolved.pan, 0.0, float(extra_x))
+        crop_y = _clamp((extra_y / 2.0) + resolved.tilt, 0.0, float(extra_y))
+        filters.extend(
+            [
+                f"scale={scaled_width}:{scaled_height}",
+                f"crop={width}:{height}:{crop_x:.3f}:{crop_y:.3f}",
+            ]
+        )
+    filters.extend(["setsar=1", "format=yuv420p"])
+    return ",".join(filters)
+
+
 def _segment_args(
     source: Path,
     start: float,
@@ -30,6 +65,7 @@ def _segment_args(
     fps: float,
     out_path: Path,
     types: set[str],
+    transform: dict | None = None,
 ) -> list[str]:
     if "video" in types and "audio" in types:
         media_inputs = [
@@ -81,10 +117,7 @@ def _segment_args(
         *media_inputs,
         *maps,
         "-vf",
-        (
-            f"fps={fps},scale={width}:{height}:force_original_aspect_ratio=decrease,"
-            f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,format=yuv420p"
-        ),
+        _video_filter(width, height, fps, transform),
         "-af",
         "aresample=48000,apad",
         "-t",
@@ -208,7 +241,17 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
             source = source_paths[item["source"]]
             segment_path = tmp_dir / f"{index:04d}_clip.mp4"
             subprocess.run(
-                _segment_args(source, source_start, duration, width, height, fps, segment_path, stream_types(source)),
+                _segment_args(
+                    source,
+                    source_start,
+                    duration,
+                    width,
+                    height,
+                    fps,
+                    segment_path,
+                    stream_types(source),
+                    item.get("transform"),
+                ),
                 check=True,
             )
             segments.append(segment_path)
