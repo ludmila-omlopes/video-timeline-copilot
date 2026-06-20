@@ -35,17 +35,27 @@ def _qa_blockers(report: dict) -> list[str]:
         blockers.append("audio-only regions were detected")
     if checks.get("video_only_regions_found"):
         blockers.append("video-only regions were detected")
+    if checks.get("record_gaps_found"):
+        blockers.append("record gaps were detected")
+    if checks.get("record_overlaps_found"):
+        blockers.append("record overlaps were detected")
+    if checks.get("short_clips_found"):
+        blockers.append("clips shorter than the minimum duration were detected")
+    if checks.get("transform_coverage_ok") is False or checks.get("empty_space_risk_found"):
+        blockers.append("transform zoom is too low for pan/tilt and may expose empty frame area")
     return blockers
 
 
-def _qa_warnings(report: dict, *, allow_record_gaps: bool) -> list[str]:
+def _qa_warnings(report: dict) -> list[str]:
     checks = report.get("checks") or {}
     warnings = []
-    if checks.get("record_gaps_found") and not allow_record_gaps:
-        warnings.append("record gaps are present; confirm they are intentional")
     if report.get("preview") and not checks.get("contact_sheet_created"):
         warnings.append("contact sheet was not created; visual spot-check is limited")
     return warnings
+
+
+def _is_blocking_cut_warning(warning: str) -> bool:
+    return "keeps a long" in warning and "transcript gap" in warning
 
 
 def _revision_guidance(blockers: list[str], warnings: list[str]) -> list[str]:
@@ -58,8 +68,12 @@ def _revision_guidance(blockers: list[str], warnings: list[str]) -> list[str]:
         guidance.append("Compare record_start values and source ranges against the rendered preview duration.")
     if any("audio-only" in item or "video-only" in item for item in blockers):
         guidance.append("Inspect source stream types and keep linked audio/video ranges unless the user explicitly asked otherwise.")
-    if any("record gaps" in item for item in warnings):
-        guidance.append("Close unintentional record gaps or document why the silence/black gap belongs in the edit.")
+    if any("empty frame area" in item or "transform zoom" in item for item in blockers):
+        guidance.append("Increase transform zoom or reduce pan/tilt so transformed clips fully cover the timeline frame.")
+    if any("record gaps" in item or "record overlaps" in item for item in blockers):
+        guidance.append("Make record_start values contiguous so the timeline has no black/silent gaps or overlaps.")
+    if any("shorter than the minimum" in item for item in blockers):
+        guidance.append("Remove, extend, or merge clips shorter than the minimum duration.")
     if not guidance and blockers:
         guidance.append("Revise the EDL, rerun exports, then run preview QA and evaluation again.")
     return guidance
@@ -73,7 +87,6 @@ def evaluate_edl(
     attempt: int = 1,
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     require_preview: bool = False,
-    allow_record_gaps: bool = False,
     strict_cut_warnings: bool = False,
 ) -> dict:
     edl_path = edl_path.resolve()
@@ -94,12 +107,17 @@ def evaluate_edl(
         criteria.append(_criterion("export_validity", "pass"))
 
     cut_warnings = [] if validation_errors else cut_quality_warnings(edl_path)
-    if cut_warnings and strict_cut_warnings:
-        blockers.extend(f"cut-quality warning: {warning}" for warning in cut_warnings)
+    blocking_cut_warnings = [
+        warning for warning in cut_warnings if strict_cut_warnings or _is_blocking_cut_warning(warning)
+    ]
+    nonblocking_cut_warnings = [warning for warning in cut_warnings if warning not in blocking_cut_warnings]
+    if blocking_cut_warnings:
+        blockers.extend(f"cut-quality warning: {warning}" for warning in blocking_cut_warnings)
         criteria.append(_criterion("clip_boundaries", "fail", cut_warnings))
-    elif cut_warnings:
-        warnings.extend(f"cut-quality warning: {warning}" for warning in cut_warnings)
-        criteria.append(_criterion("clip_boundaries", "warn", cut_warnings))
+        warnings.extend(f"cut-quality warning: {warning}" for warning in nonblocking_cut_warnings)
+    elif nonblocking_cut_warnings:
+        warnings.extend(f"cut-quality warning: {warning}" for warning in nonblocking_cut_warnings)
+        criteria.append(_criterion("clip_boundaries", "warn", nonblocking_cut_warnings))
     else:
         criteria.append(_criterion("clip_boundaries", "pass"))
 
@@ -107,7 +125,7 @@ def evaluate_edl(
     if qa_report.exists():
         qa_payload = read_json(qa_report)
         qa_failures = _qa_blockers(qa_payload)
-        qa_notes = _qa_warnings(qa_payload, allow_record_gaps=allow_record_gaps)
+        qa_notes = _qa_warnings(qa_payload)
         blockers.extend(f"preview QA failed: {item}" for item in qa_failures)
         warnings.extend(f"preview QA warning: {item}" for item in qa_notes)
         criteria.append(_criterion("technical_preview", "fail" if qa_failures else "pass", qa_failures))
@@ -178,7 +196,6 @@ def main() -> None:
     parser.add_argument("--attempt", type=int, default=1, help="Current evaluation attempt number")
     parser.add_argument("--max-attempts", type=int, default=DEFAULT_MAX_ATTEMPTS, help="Maximum revision attempts")
     parser.add_argument("--require-preview", action="store_true", help="Fail when preview QA has not been run")
-    parser.add_argument("--allow-record-gaps", action="store_true", help="Do not warn about record gaps in the QA report")
     parser.add_argument("--strict-cut-warnings", action="store_true", help="Treat cut-quality warnings as blockers")
     args = parser.parse_args()
 
@@ -189,7 +206,6 @@ def main() -> None:
         attempt=args.attempt,
         max_attempts=args.max_attempts,
         require_preview=args.require_preview,
-        allow_record_gaps=args.allow_record_gaps,
         strict_cut_warnings=args.strict_cut_warnings,
     )
     print(f"evaluation {report['status']} -> {args.out or default_evaluation_path(args.edl.resolve())}")

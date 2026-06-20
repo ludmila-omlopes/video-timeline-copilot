@@ -8,6 +8,8 @@ from helpers.common import ensure_within, read_json, resolve_relative, write_jso
 from helpers.export_fcpxml import timeline_duration
 from helpers.media_tools import find_ffmpeg, media_duration, stream_types
 from helpers.render_preview import preview_path
+from helpers.transforms import transform_coverage_issue
+from helpers.validate_edl import minimum_clip_duration, timeline_timing_issues
 
 
 def default_report_path(edl_path: Path) -> Path:
@@ -69,15 +71,20 @@ def qa_preview(
     audio_only_regions = []
     video_only_regions = []
     source_stream_cache: dict[str, set[str]] = {}
+    min_clip_duration = minimum_clip_duration(edl)
+    timing_issues = timeline_timing_issues(timeline, float(edl["fps"]), min_clip_duration)
+    gaps = timing_issues["gaps"]
+    overlaps = timing_issues["overlaps"]
+    short_clips = timing_issues["short_clips"]
+    transform_coverage_issues = []
+    width, height = [int(value) for value in timeline["resolution"]]
+    timeline_index = next(index for index, item in enumerate(timelines) if item is timeline)
     cursor = 0.0
-    gaps = []
     for index, item in enumerate(sorted(timeline.get("ranges") or [], key=lambda value: float(value.get("record_start", 0.0)))):
         record_start = float(item.get("record_start", cursor))
         source_start = float(item["source_start"])
         source_end = float(item["source_end"])
         duration = source_end - source_start
-        if record_start > cursor:
-            gaps.append({"record_start": cursor, "record_end": record_start, "duration": record_start - cursor})
 
         source_id = item.get("source")
         source_path = ensure_within(resolve_relative(timeline["sources"][source_id], root), root)
@@ -98,6 +105,9 @@ def qa_preview(
             audio_only_regions.append(region)
         if media_type in {"video", "video-only", "video_only"} or "audio" not in types:
             video_only_regions.append(region)
+        coverage_issue = transform_coverage_issue(timeline_index, index, item, width, height)
+        if coverage_issue is not None:
+            transform_coverage_issues.append(coverage_issue)
         cursor = max(cursor, record_start + duration)
 
     contact_sheet_created = False
@@ -110,6 +120,10 @@ def qa_preview(
         "audio_only_regions_found": bool(audio_only_regions),
         "video_only_regions_found": bool(video_only_regions),
         "record_gaps_found": bool(gaps),
+        "record_overlaps_found": bool(overlaps),
+        "short_clips_found": bool(short_clips),
+        "transform_coverage_ok": not transform_coverage_issues,
+        "empty_space_risk_found": bool(transform_coverage_issues),
         "contact_sheet_created": contact_sheet_created,
     }
     report = {
@@ -123,7 +137,11 @@ def qa_preview(
         "checks": checks,
         "audio_only_regions": audio_only_regions,
         "video_only_regions": video_only_regions,
+        "transform_coverage_issues": transform_coverage_issues,
         "gaps": gaps,
+        "overlaps": overlaps,
+        "short_clips": short_clips,
+        "minimum_clip_duration": min_clip_duration,
         "cut_count": len(timeline.get("ranges") or []),
         "source_count": len(timeline.get("sources") or {}),
     }

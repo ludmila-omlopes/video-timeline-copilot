@@ -6,9 +6,10 @@ final edit.
 ## Current Default
 
 `vtc draft-silence-cut` uses FFmpeg `silencedetect` to find sustained low-level
-audio, then writes an editable EDL containing the complementary kept ranges.
-This is deterministic, fast, cross-platform, and already aligned with the
-project's FFmpeg dependency.
+audio, then uses transcript word timestamps to split long no-speech gaps when
+transcripts are available. It writes an editable EDL containing the kept speech
+ranges. This is deterministic, fast, cross-platform, and already aligned with
+the project's FFmpeg dependency.
 
 Default behavior:
 
@@ -16,12 +17,21 @@ Default behavior:
 - require a configurable minimum silence duration
 - keep configurable pre/post-roll padding around detected activity
 - merge nearby kept ranges
-- drop very short kept ranges
+- drop very short kept ranges; the CLI enforces a minimum 0.8 second clip
+  duration even if a lower `--min-segment` is requested
 - use transcript word timestamps, when present, to avoid cutting through spoken
   words
+- split transcript word gaps longer than the preset or `--max-word-gap`, even
+  when room tone or breath noise means FFmpeg does not classify the pause as
+  silence
 
 The helper writes `edit/edl.json`. The result should be treated as a draft
 timeline for agent or manual refinement, not a finished creative edit.
+Validation reports kept transcript gaps longer than the configured
+`max_word_gap`, and self-evaluation blocks those long gaps so awkward pauses do
+not silently pass QA.
+Validation also blocks record gaps, record overlaps, and clips shorter than the
+minimum duration.
 
 ## Styles
 
@@ -49,4 +59,5 @@ contract:
 - Silero VAD for lightweight neural speech activity detection
 - pyannote.audio when diarization or speaker-aware segmentation is needed
 
-Transcript word timings remain the final guardrail for speech-safe cut points.
+Transcript word timings remain the final guardrail for speech-safe cut points
+and for removing awkward spoken pauses that are not technically silent.

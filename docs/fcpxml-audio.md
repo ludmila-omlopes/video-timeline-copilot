@@ -23,6 +23,6 @@ standalone `<audio>` elements, `srcEnable="audio"`, or mismatched clip timing.
 The current exporter is expected to create only primary-spine `asset-clip`
 entries for EDL ranges.
 
-Zero-duration gaps are also unsafe. The exporter compares gap boundaries in
-rounded frame units before writing XML, so sub-frame spacing between adjacent
-cuts does not become a `gap` whose serialized duration is `0/...s`.
+Timeline gaps are unsafe because Resolve imports them as visible black/silent
+space. The exporter validates record timing before writing XML and refuses EDLs
+with frame-real gaps, overlaps, or clips shorter than the minimum duration.

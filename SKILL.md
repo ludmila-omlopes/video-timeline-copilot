@@ -151,9 +151,12 @@ For simple requests, choose conservative defaults:
   timestamp gaps, cut gaps longer than about 0.8 seconds, and add about 0.15
   seconds of padding before and after speech ranges. Prefer
   `vtc draft-silence-cut` for the first deterministic pass when the user wants
-  mechanical silence removal, then refine the generated EDL if needed. Also
-  collapse repeated takes: if the speaker restarts the same sentence or repeats
-  the same point nearby, include only one version.
+  mechanical silence removal; it removes transcript word gaps even when the
+  audio is not technically silent. Then refine the generated EDL if needed.
+  Also collapse repeated takes: if the speaker restarts the same sentence or
+  repeats the same point nearby, include only one version. Do not leave record
+  gaps or half-second fragments; keep clips at least 0.8 seconds unless a
+  longer configured minimum applies.
 - "short edit" without a duration: create a 10-30 second rough cut depending on
   source length.
 - "highlight" / "best moments": prioritize clear, self-contained transcript
@@ -248,9 +251,8 @@ there is ambiguity.
    ```
 
    Read `preview_report.json` before handoff when using this path. Treat
-   duration mismatches, audio-only/video-only regions, and unexpected record
-   gaps as issues to inspect and correct when they conflict with the intended
-   edit.
+   duration mismatches, transform coverage failures, audio-only/video-only
+   regions, record gaps, record overlaps, and short clips as issues to correct.
 
 10. Run self-evaluation before final handoff:
 
@@ -366,14 +368,16 @@ and incomplete phrases unless the user explicitly asks for a deliberately
 aggressive or stylized edit. Prefer the cleanest complete delivery when nearby
 phrases repeat the same idea.
 
-For tight social edits, remove more dead air but preserve word starts/ends and
-avoid creating tiny record gaps. For documentary and long-form edits, preserve
-more natural pauses and avoid rapid jump cuts unless the visual continuity is
-acceptable. For highlights, favor self-contained phrases and avoid isolated
-filler words.
+For tight social edits, remove more dead air but preserve word starts/ends,
+keep record_start values contiguous, and avoid sub-minimum clips. For
+documentary and long-form edits, preserve more natural pauses and avoid rapid
+jump cuts unless the visual continuity is acceptable. For highlights, favor
+self-contained phrases and avoid isolated filler words.
 
 Always run `vtc validate-edl` before export. When transcript timings exist, the
-validator warns if a source cut appears to land inside a spoken word.
+validator warns if a source cut appears to land inside a spoken word. Validation
+fails when a timeline has record gaps, record overlaps, or clips shorter than
+the minimum duration.
 
 ## Resolve Caveats
 

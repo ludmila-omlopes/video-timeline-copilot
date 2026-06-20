@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename, seconds_to_frames, write_json
+from helpers.transforms import resolve_transform
+from helpers.validate_edl import minimum_clip_duration, timeline_timing_issues, validate
 
 
 def load_resolve_module():
@@ -60,12 +62,21 @@ def delete_timeline(project, media_pool, name: str) -> bool:
 
 def create_timelines_from_edl(project, resolve, edl: dict, footage_root: Path, *, replace_existing: bool = False) -> list[str]:
     fps = float(edl["fps"])
+    min_clip_duration = minimum_clip_duration(edl)
     media_storage = resolve.GetMediaStorage()
     media_pool = project.GetMediaPool()
     imported: dict[str, object] = {}
     created_timelines = []
 
-    for timeline_spec in edl["timelines"]:
+    for timeline_index, timeline_spec in enumerate(edl["timelines"]):
+        timing_issues = timeline_timing_issues(timeline_spec, fps, min_clip_duration)
+        if timing_issues["gaps"]:
+            fail(f"Timeline {timeline_index} contains record gaps; validate the EDL before creating Resolve timelines.")
+        if timing_issues["overlaps"]:
+            fail(f"Timeline {timeline_index} contains overlapping clips; validate the EDL before creating Resolve timelines.")
+        if timing_issues["short_clips"]:
+            fail(f"Timeline {timeline_index} contains clips shorter than {min_clip_duration:.3f}s.")
+
         requested_name = timeline_spec["name"]
         timeline_name = requested_name
         if replace_existing:
@@ -116,14 +127,13 @@ def create_timelines_from_edl(project, resolve, edl: dict, footage_root: Path, *
         for index, timeline_item in enumerate(video_items):
             if index >= len(timeline_spec["ranges"]):
                 break
-            transform = timeline_spec["ranges"][index].get("transform") or {}
-            zoom = float(transform.get("zoom", 1.0))
+            transform = resolve_transform(timeline_spec["ranges"][index].get("transform"), int(width), int(height))
             timeline_item.SetProperty(
                 {
-                    "ZoomX": zoom,
-                    "ZoomY": zoom,
-                    "Pan": float(transform.get("pan", 0)),
-                    "Tilt": float(transform.get("tilt", 0)),
+                    "ZoomX": transform.zoom,
+                    "ZoomY": transform.zoom,
+                    "Pan": transform.pan,
+                    "Tilt": transform.tilt,
                 }
             )
 
@@ -138,6 +148,10 @@ def create_timelines_from_edl(project, resolve, edl: dict, footage_root: Path, *
 
 
 def build_project(edl_path: Path) -> dict:
+    validation_errors = validate(edl_path)
+    if validation_errors:
+        fail("EDL validation failed: " + "; ".join(validation_errors))
+
     edl = read_json(edl_path)
     footage_root = edl_path.parent.parent
     resolve_out = edl_path.parent / "resolve"
