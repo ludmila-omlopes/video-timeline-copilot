@@ -212,6 +212,7 @@ vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc validate-edl .\my-video\edit\edl.json
 vtc export-srt .\my-video\edit\edl.json
 vtc export-fcpxml .\my-video\edit\edl.json
+vtc import-fcpxml .\my-video\edit\Adjusted.fcpxml --base-edl .\my-video\edit\edl.json
 vtc render-preview .\my-video\edit\edl.json
 vtc qa-preview .\my-video\edit\edl.json
 vtc evaluate-edl .\my-video\edit\edl.json --require-preview
@@ -262,6 +263,26 @@ For a custom XML path:
 ```powershell
 vtc update-fcpxml .\my-video\edit\edl.json --xml .\my-video\edit\current.fcpxml
 ```
+
+If you manually adjust the imported timeline in Resolve, Final Cut Pro, or
+another FCPXML-compatible editor, export a fresh `.fcpxml` from that editor and
+sync the edited cuts back into a new EDL:
+
+```powershell
+vtc import-fcpxml .\my-video\edit\Adjusted.fcpxml --base-edl .\my-video\edit\edl.json
+```
+
+Default outputs:
+
+```text
+my-video/edit/edl.imported.json
+my-video/edit/qa/fcpxml_import_report.json
+```
+
+Use `--replace` only when you want the imported version to replace the base
+`edl.json`; the command validates a temporary import first and writes
+`edl.bak.json` before replacing. Use `--strict` when unknown XML clips should
+fail the import instead of being skipped with a warning.
 
 For Resolve Free, import the generated `.fcpxml` manually:
 
