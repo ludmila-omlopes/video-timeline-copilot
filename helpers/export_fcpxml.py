@@ -10,6 +10,16 @@ from helpers.transforms import resolve_transform
 from helpers.validate_edl import validate
 
 
+RANGE_ID_METADATA_KEY = "com.video-timeline-copilot.range-id"
+
+
+def range_id_for(timeline_index: int, range_index: int, item: dict) -> str:
+    existing = item.get("id")
+    if existing:
+        return str(existing)
+    return f"t{timeline_index + 1:03d}-r{range_index + 1:04d}"
+
+
 def fcpx_time(seconds: float, fps: float) -> str:
     return fcpx_time_from_frames(fcpx_frames(seconds, fps), fps)
 
@@ -134,7 +144,7 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
     library = ET.SubElement(fcpxml, "library")
     event = ET.SubElement(library, "event", {"name": edl["project_name"]})
 
-    for timeline in edl["timelines"]:
+    for timeline_index, timeline in enumerate(edl["timelines"]):
         width, height = timeline["resolution"]
         project = ET.SubElement(event, "project", {"name": timeline["name"]})
         sequence = ET.SubElement(
@@ -186,6 +196,15 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
             )
             if item.get("reason"):
                 ET.SubElement(clip, "note").text = str(item["reason"])
+            metadata = ET.SubElement(clip, "metadata")
+            ET.SubElement(
+                metadata,
+                "md",
+                {
+                    "key": RANGE_ID_METADATA_KEY,
+                    "value": range_id_for(timeline_index, index, item),
+                },
+            )
             ET.SubElement(clip, "adjust-conform", {"type": "fill"})
             transform = resolve_transform(item.get("transform"), int(width), int(height))
             if transform.zoom != 1.0 or transform.pan != 0.0 or transform.tilt != 0.0:

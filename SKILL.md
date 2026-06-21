@@ -235,6 +235,19 @@ there is ambiguity.
    project-name path. This rewrites the XML file on disk; it does not live-sync
    an already-imported Resolve timeline.
 
+   If the user manually edited a timeline in an FCPXML-compatible NLE and
+   exported a fresh XML, sync those cuts back to a new EDL before continuing
+   agent-led editing:
+
+   ```bash
+   vtc import-fcpxml /path/to/footage/edit/Adjusted.fcpxml --base-edl /path/to/footage/edit/edl.json
+   ```
+
+   The default output is `edit/edl.imported.json` with a reconciliation report
+   at `edit/qa/fcpxml_import_report.json`. Use `--replace` only when the user
+   explicitly wants to replace the base EDL; the helper validates a temporary
+   import and writes an `edl.bak.json` backup before replacing.
+
 9. Optionally render a technical preview and QA report:
 
    ```bash

@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from helpers.export_fcpxml import (
+    RANGE_ID_METADATA_KEY,
     build_fcpxml,
     default_fcpxml_path,
     fcpx_time_from_frames,
@@ -105,6 +106,17 @@ def test_build_fcpxml_adds_fill_conform_to_avoid_empty_canvas(tmp_path: Path) ->
 
     assert conform is not None
     assert conform.attrib["type"] == "fill"
+
+
+def test_build_fcpxml_adds_stable_range_id_metadata(tmp_path: Path) -> None:
+    edl_path, _ = write_fcpx_edl(tmp_path)
+
+    root = build_fcpxml(edl_path).getroot()
+    metadata = root.find("./library/event/project/sequence/spine/asset-clip/metadata/md")
+
+    assert metadata is not None
+    assert metadata.attrib["key"] == RANGE_ID_METADATA_KEY
+    assert metadata.attrib["value"] == "t001-r0001"
 
 
 def test_build_fcpxml_compensates_zoom_for_transform_position(tmp_path: Path) -> None:
