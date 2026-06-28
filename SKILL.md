@@ -353,6 +353,7 @@ markers.
           "source_end": 18.9,
           "record_start": 0,
           "track": 1,
+          "speed": 2.0,
           "beat": "HOOK",
           "quote": "This is the hook.",
           "reason": "Cleanest opening.",
@@ -372,6 +373,14 @@ markers.
   ]
 }
 ```
+
+`speed` is an optional playback multiplier. Use `2.0` for 200% speed,
+`0.5` for 50% speed, and omit it for normal speed. A retimed range keeps the
+same `source_start`/`source_end` source span, but its timeline duration becomes
+`(source_end - source_start) / speed`. `export-fcpxml` writes constant-speed
+retimes as Resolve-compatible `timeMap` entries so the speed change remains
+editable after import. FCPXML imports from Resolve may also include
+`record_duration` to preserve Resolve's frame-rounded clip duration.
 
 ## Cut Craft Rules
 
@@ -398,6 +407,11 @@ DaVinci Resolve's scripting API is strongest at project creation, media import,
 timeline creation, timeline item property changes, markers, project export, and
 project archive. Subtitle automation varies by Resolve version. Always generate
 SRT as a stable handoff artifact even when trying to import subtitle tracks.
+
+Retimed ranges are supported by the FCPXML exporter/importer, not by the Resolve
+scripting backend. If the EDL contains `speed` or `record_duration`, export
+FCPXML and import it into Resolve instead of using `build-resolve-project` or
+`update-resolve-timeline`.
 
 `vtc update-resolve-timeline` works against an existing Resolve project. It
 rebuilds EDL timelines in that project; it does not live-edit individual clips

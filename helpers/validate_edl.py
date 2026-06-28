@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 from helpers.common import ensure_within, read_json, resolve_relative, seconds_to_frames
+from helpers.timing import range_playback_speed, range_timeline_duration
 
 
 MIN_CLIP_DURATION_SECONDS = 0.8
@@ -72,7 +73,7 @@ def timeline_timing_issues(timeline: dict, fps: float, min_clip_duration: float)
         record_start_frames = seconds_to_frames(record_start, fps)
         source_start = float(item["source_start"])
         source_end = float(item["source_end"])
-        duration = source_end - source_start
+        duration = range_timeline_duration(item)
         duration_frames = seconds_to_frames(duration, fps)
 
         if duration_frames < min_clip_frames:
@@ -173,10 +174,16 @@ def validate(edl_path: Path) -> list[str]:
                 errors.append(f"{item_prefix}.source must reference a known source")
             start = float(item.get("source_start", -1))
             end = float(item.get("source_end", -1))
+            speed = range_playback_speed(item)
             if start < 0:
                 errors.append(f"{item_prefix}.source_start must be >= 0")
             if end <= start:
                 errors.append(f"{item_prefix}.source_end must be greater than source_start")
+            if speed <= 0:
+                errors.append(f"{item_prefix}.speed must be greater than 0")
+            record_duration = item.get("record_duration", item.get("timeline_duration"))
+            if record_duration is not None and float(record_duration) <= 0:
+                errors.append(f"{item_prefix}.record_duration must be greater than 0")
             if float(item.get("record_start", 0)) < 0:
                 errors.append(f"{item_prefix}.record_start must be >= 0")
         if fps > 0 and not any(error.startswith(prefix) for error in errors):

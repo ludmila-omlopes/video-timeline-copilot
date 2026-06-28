@@ -80,6 +80,7 @@ def test_segment_args_use_fill_conform_and_compensated_transform(tmp_path: Path,
         tmp_path / "raw" / "clip.mp4",
         0.0,
         1.0,
+        1.0,
         1920,
         1080,
         30.0,
@@ -93,6 +94,27 @@ def test_segment_args_use_fill_conform_and_compensated_transform(tmp_path: Path,
     assert "pad=" not in filter_arg
     assert "scale=2458:1384" in filter_arg
     assert "crop=1920:1080" in filter_arg
+
+
+def test_segment_args_apply_speed_to_audio_and_video(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("helpers.render_preview.find_ffmpeg", lambda: "ffmpeg")
+
+    args = _segment_args(
+        tmp_path / "raw" / "clip.mp4",
+        0.0,
+        4.0,
+        2.0,
+        1920,
+        1080,
+        30.0,
+        tmp_path / "out.mp4",
+        {"video", "audio"},
+    )
+
+    assert args[args.index("-t") + 1] == "4.000000"
+    assert args[args.index("-vf") + 1].startswith("setpts=0.5*PTS")
+    assert "atempo=2" in args[args.index("-af") + 1]
+    assert args[args.index("-af") + 1].endswith("apad")
 
 
 def test_qa_preview_writes_report_without_external_probe(tmp_path: Path, monkeypatch) -> None:

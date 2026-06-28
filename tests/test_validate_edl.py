@@ -110,6 +110,23 @@ def test_validate_reports_half_second_clip(tmp_path: Path) -> None:
     assert any("shorter than the minimum" in error for error in errors)
 
 
+def test_validate_uses_speed_for_record_timing(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path, range_overrides={"source_start": 0.0, "source_end": 4.0, "speed": 2.0})
+    edl = json.loads(edl_path.read_text(encoding="utf-8"))
+    edl["timelines"][0]["ranges"].append(
+        {"source": "A001", "source_start": 5.0, "source_end": 6.0, "record_start": 2.0}
+    )
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+
+    assert validate(edl_path) == []
+
+
+def test_validate_rejects_non_positive_speed(tmp_path: Path) -> None:
+    errors = validate(write_edl(tmp_path, range_overrides={"speed": 0}))
+
+    assert any("speed must be greater than 0" in error for error in errors)
+
+
 def test_cut_inside_word_detects_strict_interior_but_not_boundary_tolerance() -> None:
     words = [{"start": 1.0, "end": 2.0, "text": "hello"}]
 

@@ -40,6 +40,7 @@ target multiple backends later. Today it supports:
 - record start times
 - track index
 - optional transform metadata
+- optional constant-speed retime metadata
 - subtitle output path
 - editorial markers
 
@@ -79,6 +80,11 @@ into DaVinci Resolve scripting API calls:
 - add markers
 - export `.drp`
 - archive `.dra`
+
+This scripting backend rejects retimed ranges because it does not yet apply
+native Resolve speed changes. Constant-speed retimes are currently handled by
+the FCPXML backend using `timeMap` entries that Resolve imports as editable
+speed changes.
 
 `helpers/update_resolve_timeline.py` uses the same EDL-to-timeline builder
 against an existing Resolve project. It can either create uniquely named updated

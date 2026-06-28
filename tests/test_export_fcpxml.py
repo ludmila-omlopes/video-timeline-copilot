@@ -9,6 +9,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 from helpers.export_fcpxml import (
+    FCPXML_VERSION,
     RANGE_ID_METADATA_KEY,
     build_fcpxml,
     default_fcpxml_path,
@@ -73,12 +74,24 @@ def test_timeline_duration_uses_latest_record_end() -> None:
     assert timeline_duration(timeline) == 6.0
 
 
+def test_timeline_duration_uses_speed() -> None:
+    timeline = {
+        "ranges": [
+            {"record_start": 0.0, "source_start": 0.0, "source_end": 4.0, "speed": 2.0},
+            {"record_start": 2.0, "source_start": 10.0, "source_end": 11.0},
+        ]
+    }
+
+    assert timeline_duration(timeline) == 3.0
+
+
 def test_build_fcpxml_creates_root_asset_without_gap(tmp_path: Path) -> None:
     edl_path, _ = write_fcpx_edl(tmp_path)
 
     root = build_fcpxml(edl_path).getroot()
 
     assert root.tag == "fcpxml"
+    assert root.attrib["version"] == FCPXML_VERSION
     assert len(root.findall("./resources/asset")) == 1
     spine = root.find("./library/event/project/sequence/spine")
     assert spine is not None
@@ -117,6 +130,30 @@ def test_build_fcpxml_adds_stable_range_id_metadata(tmp_path: Path) -> None:
     assert metadata is not None
     assert metadata.attrib["key"] == RANGE_ID_METADATA_KEY
     assert metadata.attrib["value"] == "t001-r0001"
+
+
+def test_build_fcpxml_adds_resolve_style_time_map_for_speed(tmp_path: Path) -> None:
+    edl_path, _ = write_fcpx_edl(
+        tmp_path,
+        ranges=[
+            {"source": "A001", "source_start": 0.0, "source_end": 4.0, "record_start": 0.0, "speed": 2.0},
+            {"source": "A001", "source_start": 10.0, "source_end": 11.0, "record_start": 2.0},
+        ],
+    )
+
+    root = build_fcpxml(edl_path).getroot()
+    clip = root.find("./library/event/project/sequence/spine/asset-clip")
+    time_map = root.find("./library/event/project/sequence/spine/asset-clip/timeMap")
+    points = root.findall("./library/event/project/sequence/spine/asset-clip/timeMap/timept")
+
+    assert clip is not None
+    assert clip.attrib["duration"] == "2s"
+    assert time_map is not None
+    assert time_map.attrib["frameSampling"] == "floor"
+    assert [point.attrib for point in points] == [
+        {"time": "0s", "interp": "linear", "value": "0s"},
+        {"time": "2s", "interp": "linear", "value": "4s"},
+    ]
 
 
 def test_build_fcpxml_compensates_zoom_for_transform_position(tmp_path: Path) -> None:

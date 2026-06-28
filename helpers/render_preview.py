@@ -9,6 +9,7 @@ from pathlib import Path
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
 from helpers.export_fcpxml import timeline_duration
 from helpers.media_tools import find_ffmpeg, stream_types
+from helpers.timing import range_source_duration, range_timeline_duration
 from helpers.transforms import resolve_transform
 from helpers.validate_edl import validate
 
@@ -33,12 +34,17 @@ def _clamp(value: float, lower: float, upper: float) -> float:
     return min(max(value, lower), upper)
 
 
-def _video_filter(width: int, height: int, fps: float, transform: dict | None = None) -> str:
-    filters = [
-        f"fps={fps}",
-        f"scale={width}:{height}:force_original_aspect_ratio=increase",
-        f"crop={width}:{height}",
-    ]
+def _video_filter(width: int, height: int, fps: float, transform: dict | None = None, timeline_scale: float = 1.0) -> str:
+    filters = []
+    if abs(timeline_scale - 1.0) > 1e-6:
+        filters.append(f"setpts={timeline_scale:.12g}*PTS")
+    filters.extend(
+        [
+            f"fps={fps}",
+            f"scale={width}:{height}:force_original_aspect_ratio=increase",
+            f"crop={width}:{height}",
+        ]
+    )
     resolved = resolve_transform(transform, width, height)
     if resolved.zoom != 1.0 or resolved.pan != 0.0 or resolved.tilt != 0.0:
         scaled_width = _even_ceiling(width * resolved.zoom)
@@ -57,10 +63,31 @@ def _video_filter(width: int, height: int, fps: float, transform: dict | None = 
     return ",".join(filters)
 
 
+def _atempo_filters(speed: float) -> list[str]:
+    factors = []
+    remaining = speed
+    while remaining > 2.0:
+        factors.append(2.0)
+        remaining /= 2.0
+    while remaining < 0.5:
+        factors.append(0.5)
+        remaining /= 0.5
+    factors.append(remaining)
+    return [f"atempo={factor:.12g}" for factor in factors if abs(factor - 1.0) > 1e-6]
+
+
+def _audio_filter(speed: float) -> str:
+    filters = ["aresample=48000"]
+    filters.extend(_atempo_filters(speed))
+    filters.append("apad")
+    return ",".join(filters)
+
+
 def _segment_args(
     source: Path,
     start: float,
-    duration: float,
+    source_duration: float,
+    record_duration: float,
     width: int,
     height: int,
     fps: float,
@@ -73,7 +100,7 @@ def _segment_args(
             "-ss",
             f"{start:.6f}",
             "-t",
-            f"{duration:.6f}",
+            f"{source_duration:.6f}",
             "-i",
             str(source),
         ]
@@ -83,13 +110,13 @@ def _segment_args(
             "-ss",
             f"{start:.6f}",
             "-t",
-            f"{duration:.6f}",
+            f"{source_duration:.6f}",
             "-i",
             str(source),
             "-f",
             "lavfi",
             "-i",
-            f"anullsrc=channel_layout=stereo:sample_rate=48000:d={duration:.6f}",
+            f"anullsrc=channel_layout=stereo:sample_rate=48000:d={record_duration:.6f}",
         ]
         maps = ["-map", "0:v:0", "-map", "1:a:0"]
     elif "audio" in types:
@@ -97,11 +124,11 @@ def _segment_args(
             "-f",
             "lavfi",
             "-i",
-            f"color=c=black:s={width}x{height}:r={fps}:d={duration:.6f}",
+            f"color=c=black:s={width}x{height}:r={fps}:d={record_duration:.6f}",
             "-ss",
             f"{start:.6f}",
             "-t",
-            f"{duration:.6f}",
+            f"{source_duration:.6f}",
             "-i",
             str(source),
         ]
@@ -118,11 +145,11 @@ def _segment_args(
         *media_inputs,
         *maps,
         "-vf",
-        _video_filter(width, height, fps, transform),
+        _video_filter(width, height, fps, transform, record_duration / source_duration),
         "-af",
-        "aresample=48000,apad",
+        _audio_filter(source_duration / record_duration),
         "-t",
-        f"{duration:.6f}",
+        f"{record_duration:.6f}",
         "-c:v",
         "libx264",
         "-preset",
@@ -238,9 +265,9 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
                 raise ValueError(f"range {index + 1} overlaps the previous clip; validate the EDL before rendering")
 
             source_start = float(item["source_start"])
-            source_end = float(item["source_end"])
-            duration = source_end - source_start
-            if duration <= 0:
+            source_duration = range_source_duration(item)
+            duration = range_timeline_duration(item)
+            if source_duration <= 0 or duration <= 0:
                 raise ValueError(f"range {index + 1} duration must be positive")
             source = source_paths[item["source"]]
             segment_path = tmp_dir / f"{index:04d}_clip.mp4"
@@ -248,6 +275,7 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
                 _segment_args(
                     source,
                     source_start,
+                    source_duration,
                     duration,
                     width,
                     height,
