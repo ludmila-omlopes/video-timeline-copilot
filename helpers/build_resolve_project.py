@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename, seconds_to_frames, write_json
+from helpers.timing import range_effective_speed
 from helpers.transforms import resolve_transform
 from helpers.validate_edl import minimum_clip_duration, timeline_timing_issues, validate
 
@@ -76,6 +77,8 @@ def create_timelines_from_edl(project, resolve, edl: dict, footage_root: Path, *
             fail(f"Timeline {timeline_index} contains overlapping clips; validate the EDL before creating Resolve timelines.")
         if timing_issues["short_clips"]:
             fail(f"Timeline {timeline_index} contains clips shorter than {min_clip_duration:.3f}s.")
+        if any(abs(range_effective_speed(item) - 1.0) > 1e-6 for item in timeline_spec.get("ranges") or []):
+            fail("Resolve scripting backend does not support retimed ranges yet; export FCPXML instead.")
 
         requested_name = timeline_spec["name"]
         timeline_name = requested_name

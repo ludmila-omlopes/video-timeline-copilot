@@ -153,3 +153,23 @@ def test_create_timelines_rejects_half_second_clip_before_resolve_import(tmp_pat
 
     with pytest.raises(RuntimeError, match="shorter than"):
         create_timelines_from_edl(FakeProject(FakeMediaPool(FakeTimeline(FakeTimelineItem()))), FakeResolve(), edl, tmp_path)
+
+
+def test_create_timelines_rejects_retimed_ranges_before_resolve_import(tmp_path: Path) -> None:
+    source = tmp_path / "raw" / "clip.mp4"
+    source.parent.mkdir()
+    source.write_bytes(b"")
+    edl = {
+        "fps": 30,
+        "timelines": [
+            {
+                "name": "Main",
+                "resolution": [1920, 1080],
+                "sources": {"A001": "raw/clip.mp4"},
+                "ranges": [{"source": "A001", "source_start": 0.0, "source_end": 4.0, "record_start": 0.0, "speed": 2.0}],
+            }
+        ],
+    }
+
+    with pytest.raises(RuntimeError, match="does not support retimed ranges"):
+        create_timelines_from_edl(FakeProject(FakeMediaPool(FakeTimeline(FakeTimelineItem()))), FakeResolve(), edl, tmp_path)

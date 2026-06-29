@@ -102,6 +102,31 @@ def test_import_fcpxml_keeps_nle_trims(tmp_path: Path) -> None:
     assert report["timelines"][0]["trimmed_ranges"][0]["id"] == "t001-r0001"
 
 
+def test_import_fcpxml_reads_resolve_time_map_as_speed(tmp_path: Path) -> None:
+    base_edl = write_base_edl(tmp_path)
+    xml_path = exported_xml(base_edl)
+    tree = ET.parse(xml_path)
+    first_clip = tree.getroot().find("./library/event/project/sequence/spine/asset-clip")
+    assert first_clip is not None
+    first_clip.attrib["duration"] = "1s"
+    time_map = ET.SubElement(first_clip, "timeMap", {"frameSampling": "floor"})
+    ET.SubElement(time_map, "timept", {"time": "0s", "interp": "linear", "value": "0s"})
+    ET.SubElement(time_map, "timept", {"time": "1s", "interp": "linear", "value": "2s"})
+    tree.write(xml_path, encoding="utf-8", xml_declaration=True)
+    out_path = base_edl.parent / "edl.imported.json"
+
+    report = import_fcpxml(xml_path, base_edl, out_path)
+    imported = imported_payload(out_path)
+    first_range = imported["timelines"][0]["ranges"][0]
+
+    assert report["status"] == "pass"
+    assert first_range["source_start"] == 0.0
+    assert first_range["source_end"] == 2.0
+    assert first_range["speed"] == 2.0
+    assert first_range["record_duration"] == 1.0
+    assert report["timelines"][0]["retimed_ranges"][0]["id"] == "t001-r0001"
+
+
 def test_import_fcpxml_reports_reordered_ranges(tmp_path: Path) -> None:
     base_edl = write_base_edl(tmp_path)
     xml_path = exported_xml(base_edl)

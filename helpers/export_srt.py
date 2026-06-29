@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from helpers.common import ensure_within, read_json, safe_filename, srt_timestamp
+from helpers.timing import range_timeline_duration, source_time_to_record_time
 
 
 def words_in_range(words: list[dict], start: float, end: float) -> list[dict]:
@@ -26,7 +27,7 @@ def build_srt_for_timeline(edl: dict, timeline: dict, edit_dir: Path, out_path: 
         source_id = item["source"]
         source_start = float(item["source_start"])
         source_end = float(item["source_end"])
-        duration = source_end - source_start
+        duration = range_timeline_duration(item)
         record_start = float(item.get("record_start", cursor))
         transcript_path = edit_dir / "transcripts" / f"{Path(timeline['sources'][source_id]).stem}.json"
 
@@ -44,13 +45,13 @@ def build_srt_for_timeline(edl: dict, timeline: dict, edit_dir: Path, out_path: 
             chunk.append(word)
             text = (word.get("text") or "").strip()
             if len(chunk) >= 5 or (text and text[-1] in ".?!"):
-                local_start = max(source_start, chunk[0]["start"]) - source_start + record_start
-                local_end = min(source_end, chunk[-1]["end"]) - source_start + record_start
+                local_start = source_time_to_record_time(item, max(source_start, chunk[0]["start"]), record_start)
+                local_end = source_time_to_record_time(item, min(source_end, chunk[-1]["end"]), record_start)
                 entries.append((local_start, max(local_end, local_start + 0.3), " ".join(w["text"].strip() for w in chunk)))
                 chunk = []
         if chunk:
-            local_start = max(source_start, chunk[0]["start"]) - source_start + record_start
-            local_end = min(source_end, chunk[-1]["end"]) - source_start + record_start
+            local_start = source_time_to_record_time(item, max(source_start, chunk[0]["start"]), record_start)
+            local_end = source_time_to_record_time(item, min(source_end, chunk[-1]["end"]), record_start)
             entries.append((local_start, max(local_end, local_start + 0.3), " ".join(w["text"].strip() for w in chunk)))
 
         cursor = max(cursor, record_start + duration)

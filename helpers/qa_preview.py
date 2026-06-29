@@ -8,6 +8,7 @@ from helpers.common import ensure_within, read_json, resolve_relative, write_jso
 from helpers.export_fcpxml import timeline_duration
 from helpers.media_tools import find_ffmpeg, media_duration, stream_types
 from helpers.render_preview import preview_path
+from helpers.timing import range_timeline_duration
 from helpers.transforms import transform_coverage_issue
 from helpers.validate_edl import minimum_clip_duration, timeline_timing_issues
 
@@ -84,7 +85,7 @@ def qa_preview(
         record_start = float(item.get("record_start", cursor))
         source_start = float(item["source_start"])
         source_end = float(item["source_end"])
-        duration = source_end - source_start
+        duration = range_timeline_duration(item)
 
         source_id = item.get("source")
         source_path = ensure_within(resolve_relative(timeline["sources"][source_id], root), root)

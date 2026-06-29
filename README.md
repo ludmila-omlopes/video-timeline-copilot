@@ -445,7 +445,14 @@ local media
 
 The EDL is the durable edit contract. It contains timeline names, source media,
 source in/out times, record positions, resolution, subtitles, markers, and
-optional transform metadata.
+optional transform and speed metadata.
+
+Ranges may include a constant `speed` playback multiplier. For example,
+`"speed": 2.0` keeps the same source span but plays it at 200%, so the timeline
+duration is half of `source_end - source_start`. FCPXML export writes these
+retimes with Resolve-style `timeMap` entries, keeping the speed change editable
+after import. Resolve scripting project creation does not support retimed
+ranges yet; use the FCPXML path for edits with speed changes.
 
 ## Design Principles
 

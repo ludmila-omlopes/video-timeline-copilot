@@ -6,10 +6,12 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
+from helpers.timing import range_effective_speed, range_playback_speed, range_source_duration, range_timeline_duration
 from helpers.transforms import resolve_transform
 from helpers.validate_edl import validate
 
 
+FCPXML_VERSION = "1.13"
 RANGE_ID_METADATA_KEY = "com.video-timeline-copilot.range-id"
 
 
@@ -59,6 +61,33 @@ def file_url(path: Path) -> str:
     return path.resolve().as_uri()
 
 
+def has_explicit_speed(item: dict) -> bool:
+    return item.get("speed") is not None or item.get("playback_speed") is not None or item.get("speed_percent") is not None
+
+
+def add_time_map(clip: ET.Element, item: dict, fps: float) -> None:
+    source_duration = range_source_duration(item)
+    record_duration = range_timeline_duration(item)
+    explicit_speed = range_playback_speed(item) if has_explicit_speed(item) else range_effective_speed(item)
+    time_map_duration = source_duration / explicit_speed
+    if abs(source_duration - record_duration) <= 1e-6 and abs(explicit_speed - 1.0) <= 1e-6:
+        return
+
+    source_start = float(item["source_start"])
+    source_end = float(item["source_end"])
+    time_map = ET.SubElement(clip, "timeMap", {"frameSampling": "floor"})
+    ET.SubElement(time_map, "timept", {"time": "0s", "interp": "linear", "value": fcpx_time(source_start, fps)})
+    ET.SubElement(
+        time_map,
+        "timept",
+        {
+            "time": fcpx_time(time_map_duration, fps),
+            "interp": "linear",
+            "value": fcpx_time(source_end, fps),
+        },
+    )
+
+
 def add_asset(
     resources: ET.Element,
     asset_id: str,
@@ -98,7 +127,7 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
     fps = float(edl["fps"])
     media_by_path = load_media_index(edl_path.parent, footage_root)
 
-    fcpxml = ET.Element("fcpxml", {"version": "1.10"})
+    fcpxml = ET.Element("fcpxml", {"version": FCPXML_VERSION})
     resources = ET.SubElement(fcpxml, "resources")
 
     formats: dict[tuple[int, int], str] = {}
@@ -172,8 +201,7 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                 raise ValueError(f"range {index + 1} overlaps the previous clip; validate the EDL before export")
 
             source_start = float(item["source_start"])
-            source_end = float(item["source_end"])
-            duration = source_end - source_start
+            duration = range_timeline_duration(item)
             duration_frames = fcpx_frames(duration, fps)
             if duration_frames <= 0:
                 raise ValueError(f"range {index + 1} duration rounds to zero frames")
@@ -205,6 +233,7 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                     "value": range_id_for(timeline_index, index, item),
                 },
             )
+            add_time_map(clip, item, fps)
             ET.SubElement(clip, "adjust-conform", {"type": "fill"})
             transform = resolve_transform(item.get("transform"), int(width), int(height))
             if transform.zoom != 1.0 or transform.pan != 0.0 or transform.tilt != 0.0:
@@ -241,7 +270,7 @@ def timeline_duration(timeline: dict) -> float:
     cursor = 0.0
     for item in sorted(timeline["ranges"], key=lambda value: float(value.get("record_start", 0.0))):
         record_start = float(item.get("record_start", cursor))
-        duration = float(item["source_end"]) - float(item["source_start"])
+        duration = range_timeline_duration(item)
         end = max(end, record_start + duration)
         cursor = max(cursor, record_start + duration)
     return end

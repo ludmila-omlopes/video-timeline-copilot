@@ -13,6 +13,7 @@ from urllib.request import url2pathname
 
 from helpers.common import read_json, resolve_relative, write_json
 from helpers.export_fcpxml import RANGE_ID_METADATA_KEY, range_id_for
+from helpers.timing import range_source_duration, range_timeline_duration
 from helpers.validate_edl import validate
 
 
@@ -120,7 +121,8 @@ def base_range_records(timeline_index: int, timeline: dict) -> list[dict]:
                 "source": item.get("source"),
                 "source_start": source_start,
                 "source_end": source_end,
-                "duration": source_end - source_start,
+                "duration": range_source_duration(item),
+                "record_duration": range_timeline_duration(item),
                 "record_start": float(item.get("record_start", 0.0)),
             }
         )
@@ -189,6 +191,7 @@ def import_project(
         "unmatched_xml_clips": [],
         "deleted_base_ranges": [],
         "trimmed_ranges": [],
+        "retimed_ranges": [],
         "reordered_ranges": [],
         "warnings": [],
         "errors": [],
@@ -257,8 +260,29 @@ def import_project(
 
         record_start = parse_fcpx_time(child.attrib["offset"]) if child.attrib.get("offset") else cursor
         source_start = parse_fcpx_time(child.attrib.get("start", "0s"))
-        duration = parse_fcpx_time(duration_value)
-        source_end = source_start + duration
+        record_duration = parse_fcpx_time(duration_value)
+        source_end = source_start + record_duration
+        speed = None
+        time_map = first_child(child, "timeMap")
+        if time_map is not None:
+            time_points = children(time_map, "timept")
+            if len(time_points) >= 2:
+                first = time_points[0]
+                last = time_points[-1]
+                time_start = parse_fcpx_time(first.attrib.get("time", "0s"))
+                time_end = parse_fcpx_time(last.attrib["time"])
+                value_start = parse_fcpx_time(first.attrib["value"])
+                value_end = parse_fcpx_time(last.attrib["value"])
+                timeline_delta = time_end - time_start
+                source_delta = value_end - value_start
+                if timeline_delta > 0 and source_delta > 0:
+                    source_start = value_start
+                    source_end = value_end
+                    speed = source_delta / timeline_delta
+                else:
+                    report["warnings"].append(f"ignored non-positive timeMap on XML clip {child.attrib.get('name', '<unnamed>')!r}")
+            else:
+                report["warnings"].append(f"ignored incomplete timeMap on XML clip {child.attrib.get('name', '<unnamed>')!r}")
         imported_timeline["sources"].setdefault(source_id, source_path_by_id[source_id])
 
         range_id = clip_range_id(child)
@@ -268,7 +292,7 @@ def import_project(
                 records,
                 source_id=source_id,
                 source_start=source_start,
-                duration=duration,
+                duration=source_end - source_start,
                 record_start=record_start,
                 used_range_ids=used_range_ids,
             )
@@ -294,11 +318,24 @@ def import_project(
                 "track": int(new_item.get("track", 1) or 1),
             }
         )
+        for key in ("speed", "playback_speed", "speed_percent", "record_duration", "timeline_duration"):
+            new_item.pop(key, None)
+        if speed is not None:
+            new_item["speed"] = round(speed, 6)
+            new_item["record_duration"] = round(record_duration, 6)
+            report["retimed_ranges"].append(
+                {
+                    "id": range_id,
+                    "speed": round(speed, 6),
+                    "record_duration": round(record_duration, 6),
+                    "source_duration": round(source_end - source_start, 6),
+                }
+            )
         trim = describe_trim(range_id, base_match["item"], new_item) if base_match is not None else None
         if trim:
             report["trimmed_ranges"].append(trim)
         imported_ranges.append(new_item)
-        cursor = max(cursor, record_start + duration)
+        cursor = max(cursor, record_start + record_duration)
 
     imported_timeline["ranges"] = sorted(imported_ranges, key=lambda item: float(item.get("record_start", 0.0)))
     base_ids = [item["id"] for item in records]
