@@ -21,6 +21,7 @@ Issues = "https://github.com/ludmila-omlopes/video-timeline-copilot/issues"
 
 [project.optional-dependencies]
 transcribe = ["faster-whisper>=1.1.0"]
+demucs = ["demucs>=4.0.1"]
 dev = ["pytest>=8.0", "ruff>=0.4"]
 
 [build-system]

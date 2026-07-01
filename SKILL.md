@@ -228,6 +228,18 @@ there is ambiguity.
    to the boundary. It is meant to catch transcript timestamps that end a word
    slightly before the audible phoneme finishes.
 
+   If the user needs to rebalance baked-in voice and background music, split the
+   source audio into Demucs stems:
+
+   ```bash
+   vtc separate-audio /path/to/footage/raw/interview.mp4 --edit-dir /path/to/footage/edit
+   ```
+
+   The default output is a two-stem vocal split under
+   `edit/audio/demucs/htdemucs/<source>/` with `vocals.wav`, `no_vocals.wav`,
+   and `vtc_stems.json`. Use `--mode 4-stem` for vocals, drums, bass, and
+   other.
+
 7. Validate:
 
    ```bash

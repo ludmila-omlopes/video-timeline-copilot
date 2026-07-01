@@ -20,6 +20,8 @@ The primary output is an editable timeline, not a flattened MP4.
   cleanest delivery instead of cutting in multiple versions of the same line.
 - Creates deterministic draft silence-cut timelines with configurable thresholds
   and transcript-aware word-boundary snapping.
+- Separates mixed source audio into Demucs stems so buried voice and background
+  music can be adjusted on separate tracks.
 - Lets Codex reason about the edit and write `edit/edl.json`.
 - Validates the EDL before any editor-specific export and warns about obvious
   cut-craft problems when transcript timings are available.
@@ -135,6 +137,11 @@ vtc --help
 ```
 
 Install FFmpeg separately and make sure `ffmpeg` and `ffprobe` are on `PATH`.
+Install the optional Demucs extra when you want local stem separation:
+
+```bash
+uv tool install --force "video-timeline-copilot[transcribe,demucs] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+```
 
 On macOS/Linux, the skill registration step is usually:
 
@@ -210,6 +217,7 @@ vtc transcribe .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc pack-transcripts --edit-dir .\my-video\edit
 vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc refine-audio-cuts .\my-video\edit\edl.json --replace
+vtc separate-audio .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc validate-edl .\my-video\edit\edl.json
 vtc export-srt .\my-video\edit\edl.json
 vtc export-fcpxml .\my-video\edit\edl.json
@@ -262,6 +270,36 @@ EDL validation reports kept transcript gaps longer than the configured
 `max_word_gap`, cuts inside words, and transcript-backed sentence/segment spans
 that are only partially preserved; self-evaluation treats speech-boundary
 issues as blockers.
+
+## Audio Stem Separation
+
+Use `vtc separate-audio` when a voice is baked into background music and you
+need separate files to rebalance in an editor:
+
+```powershell
+vtc separate-audio .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
+```
+
+The command extracts source audio to `edit/audio/extracted/`, runs Demucs, and
+writes stems under:
+
+```text
+my-video/edit/audio/demucs/htdemucs/<source>/
+  vocals.wav
+  no_vocals.wav
+  vtc_stems.json
+```
+
+The default mode is a two-stem vocal split, which is the useful path for
+lowering music under spoken voice. For broader music separation:
+
+```powershell
+vtc separate-audio .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit --mode 4-stem
+```
+
+That writes `vocals.wav`, `drums.wav`, `bass.wav`, and `other.wav`. Demucs is
+optional and local, but it may download model weights the first time a model is
+used.
 
 If the FCPXML has already been created and you want to keep updating that same
 file instead of choosing new output names, run:
