@@ -5,6 +5,7 @@ import sys
 
 COMMANDS = {
     "inventory": ("helpers.inventory", "Index local video media"),
+    "analyze-video": ("helpers.video_analysis", "Analyze visual video signals"),
     "transcribe": ("helpers.transcribe", "Transcribe one video with faster-whisper"),
     "pack-transcripts": ("helpers.pack_transcripts", "Pack transcript JSON files"),
     "draft-silence-cut": ("helpers.draft_silence_cut", "Create a draft EDL by removing detected silence"),

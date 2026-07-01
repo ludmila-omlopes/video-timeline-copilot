@@ -23,22 +23,26 @@ explicitly asks for a render.
 1. The primary artifact is an editable timeline.
 2. The LLM writes edit intent as `edl.json`; helper scripts execute it.
 3. Transcripts are cached per source and reused.
-4. Cuts must land on audio-safe word boundaries whenever speech is the basis
+4. Visual context should be gathered before creative clip selection when the
+   request depends on visible events, on-screen text, action, objects, people,
+   framing, or scene changes. If video analysis is unavailable, continue with
+   the transcript-only fallback and say so.
+5. Cuts must land on audio-safe word boundaries whenever speech is the basis
    for the edit. Use transcript timings for intent, then audio activity around
    each boundary to avoid trimming the first or last phoneme.
-5. Infer sensible defaults from the current folder before asking questions.
-6. All session outputs go in the footage folder's `edit/` directory.
-7. Always validate the EDL before exporting.
-8. Always export SRT and FCPXML after validation.
-9. When the user asks for a technical preview or when visual/technical timeline
+6. Infer sensible defaults from the current folder before asking questions.
+7. All session outputs go in the footage folder's `edit/` directory.
+8. Always validate the EDL before exporting.
+9. Always export SRT and FCPXML after validation.
+10. When the user asks for a technical preview or when visual/technical timeline
    integrity is in doubt, render an MP4 preview and run QA before final handoff.
-10. Run final self-evaluation before handoff. If it fails, revise the EDL and
+11. Run final self-evaluation before handoff. If it fails, revise the EDL and
     rerun exports/evaluation up to the configured attempt limit. For
     transcript-backed speech edits, use strict cut warnings so incomplete
     words, phrases, or sentence fragments block handoff.
-11. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
-   and FCPXML generation and tell the user to import the FCPXML manually.
-12. Repeated delivery, false starts, and self-corrections are not useful
+12. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
+    and FCPXML generation and tell the user to import the FCPXML manually.
+13. Repeated delivery, false starts, and self-corrections are not useful
     story beats. When adjacent transcript phrases restate the same idea, keep
     only the cleanest complete version and discard the earlier/incomplete take.
 
@@ -204,15 +208,34 @@ there is ambiguity.
    vtc transcribe /path/to/footage/raw/interview.mp4 --edit-dir /path/to/footage/edit
    ```
 
-3. Pack transcripts:
+3. Analyze visual context when the edit depends on visible events, scene
+   changes, action, on-screen text, objects, people, or framing:
+
+   ```bash
+   vtc analyze-video /path/to/footage/raw/interview.mp4 --edit-dir /path/to/footage/edit
+   ```
+
+   This creates `edit/video_analysis/<source>.json`, `edit/video_analysis.md`,
+   and sampled frames under `edit/video_frames/`. The default helper uses local
+   FFmpeg scene/freeze detection and sampled frames only. It does not run OCR,
+   object detection, face recognition, or a hosted vision model, so there is no
+   extra model cost. If deeper visual understanding is required, inspect the
+   sampled frames or add external/model observations to the JSON `observations`
+   array, then repack transcripts.
+
+4. Pack transcripts and cached visual context:
 
    ```bash
    vtc pack-transcripts --edit-dir /path/to/footage/edit
    ```
 
-4. Read `edit/takes_packed.md` and any needed transcript JSON files.
+5. Read `edit/takes_packed.md`, any needed transcript JSON files, and sampled
+   frames referenced by the visual context. If `takes_packed.md` says no cached
+   video analysis exists, treat visual matching as limited and continue
+   transcript-only unless the user's prompt requires visible-event matching.
 
-5. Write `edit/edl.json` from the user's requested outcome. For draft silence
+6. Write `edit/edl.json` from the user's requested outcome. Combine transcript
+   timing with visual-analysis signals when selecting clips. For draft silence
    removal, use the deterministic helper:
 
    ```bash
@@ -222,7 +245,7 @@ there is ambiguity.
    Then inspect/refine the generated EDL when the request requires more than
    mechanical silence removal.
 
-6. Refine speech cut boundaries from the source audio:
+7. Refine speech cut boundaries from the source audio:
 
    ```bash
    vtc refine-audio-cuts /path/to/footage/edit/edl.json --replace
@@ -244,19 +267,19 @@ there is ambiguity.
    and `vtc_stems.json`. Use `--mode 4-stem` for vocals, drums, bass, and
    other.
 
-7. Validate:
+8. Validate:
 
    ```bash
    vtc validate-edl /path/to/footage/edit/edl.json
    ```
 
-8. Generate subtitles:
+9. Generate subtitles:
 
    ```bash
    vtc export-srt /path/to/footage/edit/edl.json
    ```
 
-9. Export FCPXML fallback:
+10. Export FCPXML fallback:
 
    ```bash
    vtc export-fcpxml /path/to/footage/edit/edl.json
@@ -286,7 +309,7 @@ there is ambiguity.
    explicitly wants to replace the base EDL; the helper validates a temporary
    import and writes an `edl.bak.json` backup before replacing.
 
-10. Optionally render a technical preview and QA report:
+11. Optionally render a technical preview and QA report:
 
    ```bash
    vtc render-preview /path/to/footage/edit/edl.json
@@ -305,7 +328,7 @@ there is ambiguity.
    duration mismatches, transform coverage failures, audio-only/video-only
    regions, record gaps, record overlaps, and short clips as issues to correct.
 
-11. Run self-evaluation before final handoff:
+12. Run self-evaluation before final handoff:
 
    ```bash
    vtc evaluate-edl /path/to/footage/edit/edl.json --require-preview --strict-cut-warnings --attempt 1 --max-attempts 3
@@ -322,7 +345,7 @@ there is ambiguity.
    next `--attempt` value. Stop after `--max-attempts`; if the status is still
    `blocked`, tell the user what failed instead of continuing to iterate.
 
-12. Build Resolve project when external scripting is available:
+13. Build Resolve project when external scripting is available:
 
    ```bash
    vtc resolve-env-check

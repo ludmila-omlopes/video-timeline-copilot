@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from helpers.pack_transcripts import group_words, normalize_text, repeated_delivery_note
+from helpers.common import write_json
+from helpers.pack_transcripts import build_packed_lines, group_words, normalize_text, repeated_delivery_note
 
 
 def test_group_words_splits_on_gap_and_skips_missing_timings() -> None:
@@ -58,3 +59,61 @@ def test_repeated_delivery_note_ignores_phrase_outside_window() -> None:
         )
         is None
     )
+
+
+def test_build_packed_lines_includes_cached_video_analysis(tmp_path) -> None:
+    edit_dir = tmp_path / "edit"
+    write_json(
+        edit_dir / "transcripts" / "clip.json",
+        {
+            "duration": 3.0,
+            "words": [{"start": 0.0, "end": 0.5, "text": "Look"}],
+        },
+    )
+    write_json(
+        edit_dir / "video_analysis" / "clip.json",
+        {
+            "sampled_frames": [{"time": 0.0, "path": "video_frames/clip/frame_000001.jpg"}],
+            "scene_changes": [{"time": 1.5}],
+            "limitations": ["No OCR by default."],
+        },
+    )
+
+    text = "\n".join(
+        build_packed_lines(
+            edit_dir,
+            silence_threshold=0.5,
+            repeat_window=45.0,
+            similarity_threshold=0.82,
+            min_words=3,
+        )
+    )
+
+    assert "### Visual context" in text
+    assert "video_frames/clip/frame_000001.jpg" in text
+    assert "Scene-change signals: 001.50" in text
+    assert "### Transcript phrases" in text
+
+
+def test_build_packed_lines_explains_transcript_only_fallback(tmp_path) -> None:
+    edit_dir = tmp_path / "edit"
+    write_json(
+        edit_dir / "transcripts" / "clip.json",
+        {
+            "duration": 1.0,
+            "words": [{"start": 0.0, "end": 0.5, "text": "Hello"}],
+        },
+    )
+
+    text = "\n".join(
+        build_packed_lines(
+            edit_dir,
+            silence_threshold=0.5,
+            repeat_window=45.0,
+            similarity_threshold=0.82,
+            min_words=3,
+        )
+    )
+
+    assert "No cached video analysis found" in text
+    assert "continue transcript-only" in text
