@@ -13,9 +13,11 @@ The primary output is an editable timeline, not a flattened MP4.
 ## What It Does
 
 - Inventories local video files into `edit/media_index.json`.
+- Analyzes visual video signals into `edit/video_analysis/` using local FFmpeg
+  scene/freeze detection and sampled frame references.
 - Transcribes footage with `faster-whisper` and word timestamps.
-- Packs transcripts into `edit/takes_packed.md`, the main reading surface for
-  the agent.
+- Packs transcripts and cached visual signals into `edit/takes_packed.md`, the
+  main reading surface for the agent.
 - Flags likely repeated takes in the packed transcript so Codex can keep the
   cleanest delivery instead of cutting in multiple versions of the same line.
 - Creates deterministic draft silence-cut timelines with configurable thresholds
@@ -195,6 +197,9 @@ Generated files go under `edit/`:
 ```text
 my-video/edit/
   media_index.json
+  video_analysis/
+  video_analysis.md
+  video_frames/
   transcripts/
   takes_packed.md
   edl.json
@@ -215,6 +220,7 @@ the expected `media_index.json`, transcript JSON, `takes_packed.md`, and
 
 ```powershell
 vtc inventory .\my-video --edit-dir .\my-video\edit
+vtc analyze-video .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc transcribe .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc pack-transcripts --edit-dir .\my-video\edit
 vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
@@ -233,6 +239,30 @@ vtc evaluate-edl .\my-video\edit\edl.json --require-preview --strict-cut-warning
 `possible repeated take`. Those notes are meant for the editing pass: keep only
 the cleanest complete version of a restarted sentence or repeated point unless
 the repetition is intentionally part of the video.
+
+`vtc analyze-video` adds a local visual context layer before the agent chooses
+cuts:
+
+```powershell
+vtc analyze-video .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
+```
+
+Default outputs:
+
+```text
+my-video/edit/video_analysis/interview.json
+my-video/edit/video_analysis.md
+my-video/edit/video_frames/interview/frame_000001.jpg
+```
+
+The helper uses FFmpeg only: sampled frames, scene-change timestamps, and
+freeze/near-static ranges. It does not run OCR, face recognition, object
+detection, or a hosted vision model by default, so there is no extra model cost
+beyond local FFmpeg runtime. When more specific visual understanding is needed,
+review the sampled frames or add external/model observations to the
+`observations` array in `edit/video_analysis/<source>.json`, then rerun
+`vtc pack-transcripts`. If video analysis is unavailable, `takes_packed.md`
+states that the workflow is using transcript-only context.
 
 `vtc draft-silence-cut` creates an editable rough cut by detecting silence with
 FFmpeg, then using transcript word timestamps to split long no-speech gaps when
@@ -487,8 +517,9 @@ The model reasons about the edit. Deterministic helpers execute the workflow.
 ```text
 local media
   -> media inventory
+  -> FFmpeg video signal analysis
   -> faster-whisper transcript cache
-  -> packed transcript for Codex
+  -> packed transcript and visual context for Codex
   -> agent-authored edl.json
   -> validation
   -> SRT / FCPXML / preview QA
