@@ -39,9 +39,22 @@ short-form edits, or social clips intended to stand alone.
 - Keep faces, mouths, hands, important UI, and action inside the safe vertical
   frame.
 - Avoid cropping subtitles into the subject's face or over critical gameplay UI.
-- For gameplay with a facecam overlay, use `gameplay-facecam` when the range
-  should focus on the facecam, and `gameplay-screen` when the range should show
-  gameplay while excluding the facecam.
+
+## Gameplay With Facecam
+
+For Shorts cut from gameplay with a facecam overlay, handle the facecam as part
+of the vertical edit strategy:
+
+- Use `gameplay-facecam` for reaction, commentary, or personality beats where
+  the facecam is the subject.
+- Use `gameplay-screen` for gameplay/screen beats. This crops to the largest
+  remaining screen region and avoids showing the facecam again.
+- Use the same measured facecam rectangle for both presets so the screen crop
+  excludes exactly the overlay area.
+- Do not use a generic center crop when it leaves the facecam visible in a
+  screen-focused scene.
+- Add optional `padding` around the facecam rectangle when the overlay has a
+  border, shadow, or rounded frame that would otherwise remain visible.
 
 ## Captions
 

@@ -173,12 +173,11 @@ For simple requests, choose conservative defaults:
 - "highlight" / "best moments": prioritize clear, self-contained transcript
   phrases and avoid isolated filler words, false starts, and duplicate
   deliveries.
-- "gameplay" with a facecam overlay: use transform presets instead of raw
-  pan/tilt guesses. For a facecam-only scene, use `preset:
-  gameplay-facecam` with the known facecam rectangle. For the gameplay/screen
-  scene, use `preset: gameplay-screen` with the same facecam rectangle so the
-  helper zooms into the largest remaining screen region and does not show the
-  facecam again.
+- "Shorts" from gameplay with a facecam overlay: treat facecam handling as
+  part of the vertical Shorts framing. Use `preset: gameplay-facecam` for
+  reaction/commentary beats and `preset: gameplay-screen` for gameplay beats,
+  with the same known facecam rectangle, so the screen-focused scene excludes
+  the facecam instead of showing it again.
 
 Treat `takes_packed.md` notes such as `possible repeated take` as warnings that
 the marked phrase probably duplicates an earlier attempt. Do not place both
@@ -386,7 +385,13 @@ short-form, or a social cut intended to stand alone:
   `vtc refine-audio-cuts --replace` before validation/export.
 - Framing: for horizontal footage, choose an intentional vertical crop per
   range. Keep faces, hands, important UI, and subtitles inside the vertical
-  frame. Use gameplay presets when a facecam overlay exists.
+  frame.
+- Gameplay facecam: when a Short is cut from gameplay with a facecam overlay,
+  create distinct vertical scene types. Use `gameplay-facecam` for the
+  facecam/reaction shot. Use `gameplay-screen` for gameplay/screen shots so
+  the helper crops to the largest remaining gameplay region and does not show
+  the facecam again. Do not use a generic center crop if it repeats the facecam
+  in the screen-focused scene.
 - Captions: always export SRT. Prefer short caption chunks that track spoken
   phrases; avoid long subtitle blocks that cover the subject.
 - B-roll: use B-roll only when it clarifies the point, hides a jump cut, or
