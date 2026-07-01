@@ -121,12 +121,13 @@ Adjust `source_end` if the source video is shorter than 10 seconds.
 ## 6. Validate and Export Fallback Artifacts
 
 ```powershell
+vtc refine-audio-cuts .\test_video\edit\edl.json --replace
 vtc validate-edl .\test_video\edit\edl.json
 vtc export-srt .\test_video\edit\edl.json
 vtc export-fcpxml .\test_video\edit\edl.json
 vtc render-preview .\test_video\edit\edl.json
 vtc qa-preview .\test_video\edit\edl.json
-vtc evaluate-edl .\test_video\edit\edl.json --require-preview --attempt 1 --max-attempts 3
+vtc evaluate-edl .\test_video\edit\edl.json --require-preview --strict-cut-warnings --attempt 1 --max-attempts 3
 ```
 
 Expected outputs:
@@ -135,6 +136,7 @@ Expected outputs:
 test_video/edit/subtitles/Main_Timeline.srt
 test_video/edit/Teste_Edit.fcpxml
 test_video/edit/previews/Teste_Edit_preview.mp4
+test_video/edit/qa/audio_refine_report.json
 test_video/edit/qa/preview_report.json
 test_video/edit/qa/contact_sheet.jpg
 test_video/edit/qa/evaluation_report.json

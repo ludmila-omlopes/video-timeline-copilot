@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -9,24 +10,65 @@ from helpers.timing import range_playback_speed, range_timeline_duration
 
 
 MIN_CLIP_DURATION_SECONDS = 0.8
+SENTENCE_END_RE = re.compile(r"[.!?][\"')\]]*$")
+PARTIAL_SPAN_TOLERANCE_SECONDS = 0.035
+MAX_WARNING_TEXT_CHARS = 96
 
 
-def load_transcript_words(edit_dir: Path, source_path: Path) -> list[dict]:
+def _coerce_word(word: dict) -> dict | None:
+    start = word.get("start")
+    end = word.get("end")
+    if start is None or end is None:
+        return None
+    return {"start": float(start), "end": float(end), "text": word.get("text", "")}
+
+
+def load_transcript(edit_dir: Path, source_path: Path) -> dict:
     transcript_path = edit_dir / "transcripts" / f"{source_path.stem}.json"
     if not transcript_path.exists():
-        return []
+        return {"words": [], "segments": []}
     try:
         payload = read_json(transcript_path)
     except Exception:
-        return []
+        return {"words": [], "segments": []}
+
     words = []
     for word in payload.get("words", []):
-        start = word.get("start")
-        end = word.get("end")
+        coerced = _coerce_word(word)
+        if coerced:
+            words.append(coerced)
+
+    segments = []
+    for segment in payload.get("segments", []):
+        start = segment.get("start")
+        end = segment.get("end")
         if start is None or end is None:
             continue
-        words.append({"start": float(start), "end": float(end), "text": word.get("text", "")})
-    return words
+        segment_words = []
+        for word in segment.get("words") or []:
+            coerced = _coerce_word(word)
+            if coerced:
+                segment_words.append(coerced)
+        if not segment_words:
+            segment_words = [
+                word
+                for word in words
+                if word["end"] > float(start) - PARTIAL_SPAN_TOLERANCE_SECONDS
+                and word["start"] < float(end) + PARTIAL_SPAN_TOLERANCE_SECONDS
+            ]
+        segments.append(
+            {
+                "start": float(start),
+                "end": float(end),
+                "text": segment.get("text", ""),
+                "words": segment_words,
+            }
+        )
+    return {"words": words, "segments": segments}
+
+
+def load_transcript_words(edit_dir: Path, source_path: Path) -> list[dict]:
+    return load_transcript(edit_dir, source_path)["words"]
 
 
 def cut_inside_word(cut_time: float, words: list[dict], tolerance: float = 0.025) -> dict | None:
@@ -49,6 +91,100 @@ def transcript_gaps_in_range(words: list[dict], start: float, end: float, max_wo
         if duration > max_word_gap:
             gaps.append({"start": gap_start, "end": gap_end, "duration": duration})
     return gaps
+
+
+def sentence_ending_word(text: str) -> bool:
+    return bool(SENTENCE_END_RE.search((text or "").strip()))
+
+
+def _span_text(words: list[dict], fallback: str = "") -> str:
+    text = " ".join((word.get("text") or "").strip() for word in words).strip() or fallback.strip()
+    if len(text) <= MAX_WARNING_TEXT_CHARS:
+        return text
+    return f"{text[: MAX_WARNING_TEXT_CHARS - 3].rstrip()}..."
+
+
+def _make_span(kind: str, words: list[dict], fallback_text: str = "") -> dict | None:
+    if len(words) < 2:
+        return None
+    return {
+        "kind": kind,
+        "start": float(words[0]["start"]),
+        "end": float(words[-1]["end"]),
+        "text": _span_text(words, fallback_text),
+        "words": words,
+    }
+
+
+def sentence_spans_from_words(words: list[dict]) -> list[dict]:
+    """Return punctuation-backed sentence spans for partial-phrase QA.
+
+    Whisper word timings usually preserve sentence punctuation on word text.
+    If punctuation is absent, this returns no spans and segment spans are used
+    instead to avoid treating an entire transcript as one sentence.
+    """
+    if not any(sentence_ending_word(word.get("text", "")) for word in words):
+        return []
+
+    spans = []
+    current: list[dict] = []
+    for word in words:
+        current.append(word)
+        if sentence_ending_word(word.get("text", "")):
+            span = _make_span("sentence", current)
+            if span:
+                spans.append(span)
+            current = []
+    return spans
+
+
+def segment_spans_from_transcript(segments: list[dict]) -> list[dict]:
+    spans = []
+    for segment in segments:
+        span = _make_span("segment", segment.get("words") or [], segment.get("text", ""))
+        if span:
+            spans.append(span)
+    return spans
+
+
+def transcript_phrase_spans(words: list[dict], segments: list[dict]) -> list[dict]:
+    sentence_spans = sentence_spans_from_words(words)
+    if sentence_spans:
+        return sentence_spans
+    return segment_spans_from_transcript(segments)
+
+
+def word_is_fully_covered(word: dict, ranges: list[dict], tolerance: float = PARTIAL_SPAN_TOLERANCE_SECONDS) -> bool:
+    word_start = float(word["start"])
+    word_end = float(word["end"])
+    for item in ranges:
+        range_start = float(item.get("source_start", 0))
+        range_end = float(item.get("source_end", 0))
+        if range_start - tolerance <= word_start and word_end <= range_end + tolerance:
+            return True
+    return False
+
+
+def partial_phrase_warnings(
+    spans: list[dict],
+    ranges: list[dict],
+    *,
+    timeline_index: int,
+    source_id: str,
+) -> list[str]:
+    warnings = []
+    for span in spans:
+        words = span.get("words") or []
+        covered_words = [word for word in words if word_is_fully_covered(word, ranges)]
+        omitted_words = [word for word in words if not word_is_fully_covered(word, ranges)]
+        if not covered_words or not omitted_words:
+            continue
+        warnings.append(
+            f"timelines[{timeline_index}].sources.{source_id} keeps only part of {span['kind']} "
+            f"{span.get('text', '').strip()!r} ({span['start']:.3f}-{span['end']:.3f}); "
+            f"omitted {len(omitted_words)}/{len(words)} words"
+        )
+    return warnings
 
 
 def minimum_clip_duration(edl: dict) -> float:
@@ -217,15 +353,19 @@ def cut_quality_warnings(edl_path: Path) -> list[str]:
 
     for timeline_index, timeline in enumerate(edl.get("timelines") or []):
         sources = timeline.get("sources", {})
-        words_by_source = {}
+        transcripts_by_source = {}
         for source_id, source_path in sources.items():
             resolved = resolve_relative(source_path, root)
-            words_by_source[source_id] = load_transcript_words(edit_dir, resolved)
+            transcripts_by_source[source_id] = load_transcript(edit_dir, resolved)
 
         ranges = sorted(timeline.get("ranges") or [], key=lambda item: float(item.get("record_start", 0)))
+        ranges_by_source: dict[str, list[dict]] = {}
         for range_index, item in enumerate(ranges):
             source_id = item.get("source")
-            words = words_by_source.get(source_id, [])
+            if source_id:
+                ranges_by_source.setdefault(source_id, []).append(item)
+            transcript = transcripts_by_source.get(source_id, {})
+            words = transcript.get("words", [])
             if words:
                 for key in ("source_start", "source_end"):
                     cut = float(item.get(key, 0))
@@ -246,6 +386,17 @@ def cut_quality_warnings(edl_path: Path) -> list[str]:
                         f"{gap['duration']:.3f}s transcript gap ({gap['start']:.3f}-{gap['end']:.3f}); "
                         "split or trim the range when removing silence"
                     )
+        for source_id, source_ranges in ranges_by_source.items():
+            transcript = transcripts_by_source.get(source_id, {})
+            spans = transcript_phrase_spans(transcript.get("words", []), transcript.get("segments", []))
+            warnings.extend(
+                partial_phrase_warnings(
+                    spans,
+                    source_ranges,
+                    timeline_index=timeline_index,
+                    source_id=source_id,
+                )
+            )
 
     return warnings
 

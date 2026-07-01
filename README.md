@@ -209,13 +209,14 @@ vtc inventory .\my-video --edit-dir .\my-video\edit
 vtc transcribe .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc pack-transcripts --edit-dir .\my-video\edit
 vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
+vtc refine-audio-cuts .\my-video\edit\edl.json --replace
 vtc validate-edl .\my-video\edit\edl.json
 vtc export-srt .\my-video\edit\edl.json
 vtc export-fcpxml .\my-video\edit\edl.json
 vtc import-fcpxml .\my-video\edit\Adjusted.fcpxml --base-edl .\my-video\edit\edl.json
 vtc render-preview .\my-video\edit\edl.json
 vtc qa-preview .\my-video\edit\edl.json
-vtc evaluate-edl .\my-video\edit\edl.json --require-preview
+vtc evaluate-edl .\my-video\edit\edl.json --require-preview --strict-cut-warnings
 ```
 
 `vtc pack-transcripts` annotates nearby repeated deliveries as
@@ -248,8 +249,19 @@ When `edit/transcripts/<source>.json` exists, the helper adjusts cut points to
 word timings so draft silence cuts do not trim through spoken words, and it
 removes long pauses even when the audio is not technically silent. See
 [docs/audio-analysis.md](docs/audio-analysis.md) for detector tradeoffs.
+Because ASR word timestamps can end slightly before the audible phoneme tail,
+run audio refinement before validation/export:
+
+```powershell
+vtc refine-audio-cuts .\my-video\edit\edl.json --replace
+```
+
+This reads the source audio around each cut and expands boundaries outward only
+when RMS activity is found close to the current `source_start` or `source_end`.
 EDL validation reports kept transcript gaps longer than the configured
-`max_word_gap`; self-evaluation treats those long gaps as blockers.
+`max_word_gap`, cuts inside words, and transcript-backed sentence/segment spans
+that are only partially preserved; self-evaluation treats speech-boundary
+issues as blockers.
 
 If the FCPXML has already been created and you want to keep updating that same
 file instead of choosing new output names, run:
@@ -334,7 +346,7 @@ linked audio/video. Use `--preview`, `--report`, `--contact-sheet`, or
 Run `vtc evaluate-edl` after validation, export, preview rendering, and QA:
 
 ```powershell
-vtc evaluate-edl .\my-video\edit\edl.json --require-preview --attempt 1 --max-attempts 3
+vtc evaluate-edl .\my-video\edit\edl.json --require-preview --strict-cut-warnings --attempt 1 --max-attempts 3
 ```
 
 Default output:
@@ -353,9 +365,10 @@ returns one of three statuses:
 - `blocked`: the edit still fails after `--max-attempts`; stop and report the
   blockers instead of continuing to iterate.
 
-Record gaps, overlaps, and clips shorter than the minimum duration are always
-blockers. Use `--strict-cut-warnings` when softer cut-quality warnings, such as
-cuts inside words, should also block delivery.
+Record gaps, overlaps, clips shorter than the minimum duration, cuts inside
+words, long kept transcript gaps, and partially preserved transcript-backed
+sentences/segments are blockers. Use `--strict-cut-warnings` for final
+speech-edit handoff so any future cut-quality warning also blocks delivery.
 
 ## DaVinci Resolve
 
@@ -446,6 +459,22 @@ local media
 The EDL is the durable edit contract. It contains timeline names, source media,
 source in/out times, record positions, resolution, subtitles, markers, and
 optional transform and speed metadata.
+
+Gameplay edits with a facecam overlay can use transform presets:
+
+```json
+{
+  "transform": {
+    "preset": "gameplay-screen",
+    "facecam": {"x": 0, "y": 720, "width": 320, "height": 360}
+  }
+}
+```
+
+`gameplay-facecam` crops into the facecam rectangle. `gameplay-screen` uses the
+same rectangle to zoom into the largest remaining screen region, centered so the
+facecam is not shown again. Rectangle coordinates may be pixels or normalized
+`0.0`-`1.0` values.
 
 Ranges may include a constant `speed` playback multiplier. For example,
 `"speed": 2.0` keeps the same source span but plays it at 200%, so the timeline

@@ -25,6 +25,11 @@ activity. It uses FFmpeg `silencedetect` as the baseline detector and uses
 cached transcript word timings, when present, to move cut points away from
 spoken-word interiors.
 
+`helpers/audio_refine.py` is a post-pass for speech-safe boundaries. It decodes
+small source-audio windows around each EDL cut, detects RMS activity near the
+boundary, and expands `source_start`/`source_end` outward when the transcript
+timestamp would trim audible phoneme edges.
+
 ### 3. Intent Layer
 
 The agent writes `edit/edl.json`. This is the durable edit contract.
@@ -44,12 +49,19 @@ target multiple backends later. Today it supports:
 - subtitle output path
 - editorial markers
 
+Transform metadata supports raw `zoom`/`pan`/`tilt`, direct `focus_rect`, and
+gameplay presets. `gameplay-facecam` focuses the camera rectangle;
+`gameplay-screen` computes a centered zoom into the largest remaining gameplay
+region after excluding the facecam rectangle, preventing the screen scene from
+showing the facecam overlay again.
+
 ### 4. Validation Layer
 
 `helpers/validate_edl.py` checks the EDL before any editor-specific backend runs.
 It blocks invalid timeline timing, including record gaps, overlapping clips, and
 clips shorter than the minimum duration. It also emits cut-quality warnings,
-such as transcript-backed cuts that appear to land inside words, without turning
+such as transcript-backed cuts that appear to land inside words or timelines
+that keep only part of a transcript-backed sentence/segment, without turning
 those warnings into hard schema errors.
 
 Validation is deliberately separate from Resolve so offline workflows still get
@@ -64,8 +76,10 @@ record overlaps, short clips, and a contact sheet.
 
 `helpers/evaluate_edl.py` is the final handoff gate. It combines EDL validation,
 cut-quality warnings, preview QA, and explicit agent-review criteria into
-`edit/qa/evaluation_report.json`. The report tells the agent whether to proceed,
-revise the EDL and retry, or stop after the configured attempt limit.
+`edit/qa/evaluation_report.json`. Speech-boundary warnings are blockers at this
+stage so a technically valid EDL cannot pass with clipped words or partial
+phrases. The report tells the agent whether to proceed, revise the EDL and
+retry, or stop after the configured attempt limit.
 
 ### 6. Backend Layer
 

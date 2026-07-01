@@ -165,3 +165,81 @@ def test_cut_quality_warnings_report_long_transcript_gap_inside_kept_range(tmp_p
     warnings = cut_quality_warnings(edl_path)
 
     assert any("keeps a long 3.000s transcript gap" in warning for warning in warnings)
+
+
+def test_cut_quality_warnings_report_partial_sentence_kept_at_word_boundary(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path, range_overrides={"source_start": 0.6, "source_end": 1.5})
+    transcript_dir = edl_path.parent / "transcripts"
+    transcript_dir.mkdir()
+    (transcript_dir / "clip.json").write_text(
+        json.dumps(
+            {
+                "words": [
+                    {"start": 0.0, "end": 0.2, "text": "Please"},
+                    {"start": 0.3, "end": 0.5, "text": "do"},
+                    {"start": 0.6, "end": 0.8, "text": "not"},
+                    {"start": 0.9, "end": 1.2, "text": "cut"},
+                    {"start": 1.3, "end": 1.5, "text": "phrases."},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    warnings = cut_quality_warnings(edl_path)
+
+    assert any("keeps only part of sentence" in warning for warning in warnings)
+    assert any("omitted 2/5 words" in warning for warning in warnings)
+
+
+def test_cut_quality_warnings_do_not_report_partial_sentence_when_all_words_are_kept(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path, range_overrides={"source_start": 0.0, "source_end": 0.5})
+    edl = json.loads(edl_path.read_text(encoding="utf-8"))
+    edl["timelines"][0]["ranges"].append(
+        {"source": "A001", "source_start": 1.0, "source_end": 1.5, "record_start": 0.5}
+    )
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+    transcript_dir = edl_path.parent / "transcripts"
+    transcript_dir.mkdir()
+    (transcript_dir / "clip.json").write_text(
+        json.dumps(
+            {
+                "words": [
+                    {"start": 0.0, "end": 0.2, "text": "Please"},
+                    {"start": 0.3, "end": 0.5, "text": "keep"},
+                    {"start": 1.0, "end": 1.2, "text": "this"},
+                    {"start": 1.3, "end": 1.5, "text": "sentence."},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    warnings = cut_quality_warnings(edl_path)
+
+    assert not any("keeps only part of sentence" in warning for warning in warnings)
+
+
+def test_cut_quality_warnings_use_segments_when_word_punctuation_is_missing(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path, range_overrides={"source_start": 0.6, "source_end": 1.4})
+    transcript_dir = edl_path.parent / "transcripts"
+    transcript_dir.mkdir()
+    words = [
+        {"start": 0.0, "end": 0.2, "text": "please"},
+        {"start": 0.3, "end": 0.5, "text": "keep"},
+        {"start": 0.6, "end": 0.8, "text": "the"},
+        {"start": 0.9, "end": 1.4, "text": "phrase"},
+    ]
+    (transcript_dir / "clip.json").write_text(
+        json.dumps(
+            {
+                "segments": [{"start": 0.0, "end": 1.4, "text": "please keep the phrase", "words": words}],
+                "words": words,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    warnings = cut_quality_warnings(edl_path)
+
+    assert any("keeps only part of segment" in warning for warning in warnings)

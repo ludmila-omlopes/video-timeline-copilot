@@ -181,3 +181,52 @@ def test_evaluate_edl_blocks_long_transcript_gap(tmp_path: Path) -> None:
 
     assert report["status"] == "needs_revision"
     assert any("transcript gap" in item for item in report["blockers"])
+
+
+def test_evaluate_edl_blocks_partial_sentence_by_default(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path)
+    edl = json.loads(edl_path.read_text(encoding="utf-8"))
+    edl["timelines"][0]["ranges"][0]["source_start"] = 0.6
+    edl["timelines"][0]["ranges"][0]["source_end"] = 1.5
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+    transcript_dir = edl_path.parent / "transcripts"
+    transcript_dir.mkdir()
+    (transcript_dir / "clip.json").write_text(
+        json.dumps(
+            {
+                "words": [
+                    {"start": 0.0, "end": 0.2, "text": "Please"},
+                    {"start": 0.3, "end": 0.5, "text": "do"},
+                    {"start": 0.6, "end": 0.8, "text": "not"},
+                    {"start": 0.9, "end": 1.2, "text": "cut"},
+                    {"start": 1.3, "end": 1.5, "text": "phrases."},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    qa_path = write_qa_report(edl_path)
+
+    report = evaluate_edl(edl_path, qa_report_path=qa_path, require_preview=True)
+
+    assert report["status"] == "needs_revision"
+    assert any("keeps only part of sentence" in item for item in report["blockers"])
+
+
+def test_evaluate_edl_blocks_cuts_inside_words_by_default(tmp_path: Path) -> None:
+    edl_path = write_edl(tmp_path)
+    edl = json.loads(edl_path.read_text(encoding="utf-8"))
+    edl["timelines"][0]["ranges"][0]["source_start"] = 0.5
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+    transcript_dir = edl_path.parent / "transcripts"
+    transcript_dir.mkdir()
+    (transcript_dir / "clip.json").write_text(
+        json.dumps({"words": [{"start": 0.0, "end": 1.0, "text": "hello"}]}),
+        encoding="utf-8",
+    )
+    qa_path = write_qa_report(edl_path)
+
+    report = evaluate_edl(edl_path, qa_report_path=qa_path, require_preview=True)
+
+    assert report["status"] == "needs_revision"
+    assert any("cuts inside word" in item for item in report["blockers"])
