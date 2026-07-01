@@ -22,6 +22,8 @@ The primary output is an editable timeline, not a flattened MP4.
   and transcript-aware word-boundary snapping.
 - Separates mixed source audio into Demucs stems so buried voice and background
   music can be adjusted on separate tracks.
+- Documents Shorts-specific editing defaults for hook, pacing, vertical framing,
+  captions, B-roll, and QA.
 - Lets Codex reason about the edit and write `edit/edl.json`.
 - Validates the EDL before any editor-specific export and warns about obvious
   cut-craft problems when transcript timings are available.
@@ -498,7 +500,8 @@ The EDL is the durable edit contract. It contains timeline names, source media,
 source in/out times, record positions, resolution, subtitles, markers, and
 optional transform and speed metadata.
 
-Gameplay edits with a facecam overlay can use transform presets:
+Shorts cut from gameplay with a facecam overlay can use transform presets as
+part of vertical framing:
 
 ```json
 {
@@ -509,10 +512,11 @@ Gameplay edits with a facecam overlay can use transform presets:
 }
 ```
 
-`gameplay-facecam` crops into the facecam rectangle. `gameplay-screen` uses the
-same rectangle to zoom into the largest remaining screen region, centered so the
-facecam is not shown again. Rectangle coordinates may be pixels or normalized
-`0.0`-`1.0` values.
+`gameplay-facecam` crops into the facecam rectangle for reaction/commentary
+beats. `gameplay-screen` uses the same rectangle to zoom into the largest
+remaining gameplay region for screen-focused beats, centered so the facecam is
+not shown again. Rectangle coordinates may be pixels or normalized `0.0`-`1.0`
+values.
 
 Ranges may include a constant `speed` playback multiplier. For example,
 `"speed": 2.0` keeps the same source span but plays it at 200%, so the timeline
@@ -537,7 +541,9 @@ ranges yet; use the FCPXML path for edits with speed changes.
 See [SKILL.md](SKILL.md) for Codex usage rules, [install.md](install.md) for
 setup details, [docs/architecture.md](docs/architecture.md) for internals,
 [docs/audio-analysis.md](docs/audio-analysis.md) for silence-cut behavior, and
-[docs/e2e-test.md](docs/e2e-test.md) for release validation.
+[docs/shorts-guidelines.md](docs/shorts-guidelines.md) for Shorts-specific
+editing guidance. Use [docs/e2e-test.md](docs/e2e-test.md) for release
+validation.
 
 ## Contact
 

@@ -165,15 +165,19 @@ For simple requests, choose conservative defaults:
   longer configured minimum applies.
 - "short edit" without a duration: create a 10-30 second rough cut depending on
   source length.
+- "Shorts", "YouTube Short", or vertical short-form edit: default to a 9:16
+  timeline, usually `resolution: [1080, 1920]`, unless the user explicitly asks
+  for another format. Pick one self-contained idea, start on the strongest hook,
+  keep pacing tight without clipping words, and avoid intros/outros that do not
+  serve the short.
 - "highlight" / "best moments": prioritize clear, self-contained transcript
   phrases and avoid isolated filler words, false starts, and duplicate
   deliveries.
-- "gameplay" with a facecam overlay: use transform presets instead of raw
-  pan/tilt guesses. For a facecam-only scene, use `preset:
-  gameplay-facecam` with the known facecam rectangle. For the gameplay/screen
-  scene, use `preset: gameplay-screen` with the same facecam rectangle so the
-  helper zooms into the largest remaining screen region and does not show the
-  facecam again.
+- "Shorts" from gameplay with a facecam overlay: treat facecam handling as
+  part of the vertical Shorts framing. Use `preset: gameplay-facecam` for
+  reaction/commentary beats and `preset: gameplay-screen` for gameplay beats,
+  with the same known facecam rectangle, so the screen-focused scene excludes
+  the facecam instead of showing it again.
 
 Treat `takes_packed.md` notes such as `possible repeated take` as warnings that
 the marked phrase probably duplicates an earlier attempt. Do not place both
@@ -362,6 +366,38 @@ Guardrails:
 - Do not use external paid or network video-analysis services unless the user
   explicitly asks for that path.
 - Keep every report under `edit/qa/` so the user can inspect what was checked.
+
+## Shorts-Specific Guidelines
+
+Use these rules whenever the user asks for Shorts, YouTube Shorts, vertical
+short-form, or a social cut intended to stand alone:
+
+- Format: default to a 9:16 vertical timeline, normally `resolution:
+  [1080, 1920]`. Do not change an explicitly requested format.
+- Duration: respect the user's requested duration. If none is given, choose a
+  compact cut around one complete idea instead of stretching to fill time.
+- Hook: open on the strongest sentence, reveal, contradiction, question, or
+  visual action. Cut preamble before the hook unless it is necessary context.
+- Structure: keep one main setup/payoff. Avoid stitching unrelated highlights
+  into one short unless the user asked for a montage.
+- Speech: remove dead air, false starts, duplicate retakes, and filler, but
+  preserve complete words and self-contained phrases. Run
+  `vtc refine-audio-cuts --replace` before validation/export.
+- Framing: for horizontal footage, choose an intentional vertical crop per
+  range. Keep faces, hands, important UI, and subtitles inside the vertical
+  frame.
+- Gameplay facecam: when a Short is cut from gameplay with a facecam overlay,
+  create distinct vertical scene types. Use `gameplay-facecam` for the
+  facecam/reaction shot. Use `gameplay-screen` for gameplay/screen shots so
+  the helper crops to the largest remaining gameplay region and does not show
+  the facecam again. Do not use a generic center crop if it repeats the facecam
+  in the screen-focused scene.
+- Captions: always export SRT. Prefer short caption chunks that track spoken
+  phrases; avoid long subtitle blocks that cover the subject.
+- B-roll: use B-roll only when it clarifies the point, hides a jump cut, or
+  adds necessary visual evidence. Do not bury the speaker under generic filler.
+- Handoff: for Shorts, render a preview and run QA when framing or captions are
+  important, because vertical crop mistakes are hard to see from EDL alone.
 
 ## EDL Contract
 
