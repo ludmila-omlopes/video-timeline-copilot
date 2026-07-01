@@ -165,6 +165,11 @@ For simple requests, choose conservative defaults:
   longer configured minimum applies.
 - "short edit" without a duration: create a 10-30 second rough cut depending on
   source length.
+- "Shorts", "YouTube Short", or vertical short-form edit: default to a 9:16
+  timeline, usually `resolution: [1080, 1920]`, unless the user explicitly asks
+  for another format. Pick one self-contained idea, start on the strongest hook,
+  keep pacing tight without clipping words, and avoid intros/outros that do not
+  serve the short.
 - "highlight" / "best moments": prioritize clear, self-contained transcript
   phrases and avoid isolated filler words, false starts, and duplicate
   deliveries.
@@ -362,6 +367,32 @@ Guardrails:
 - Do not use external paid or network video-analysis services unless the user
   explicitly asks for that path.
 - Keep every report under `edit/qa/` so the user can inspect what was checked.
+
+## Shorts-Specific Guidelines
+
+Use these rules whenever the user asks for Shorts, YouTube Shorts, vertical
+short-form, or a social cut intended to stand alone:
+
+- Format: default to a 9:16 vertical timeline, normally `resolution:
+  [1080, 1920]`. Do not change an explicitly requested format.
+- Duration: respect the user's requested duration. If none is given, choose a
+  compact cut around one complete idea instead of stretching to fill time.
+- Hook: open on the strongest sentence, reveal, contradiction, question, or
+  visual action. Cut preamble before the hook unless it is necessary context.
+- Structure: keep one main setup/payoff. Avoid stitching unrelated highlights
+  into one short unless the user asked for a montage.
+- Speech: remove dead air, false starts, duplicate retakes, and filler, but
+  preserve complete words and self-contained phrases. Run
+  `vtc refine-audio-cuts --replace` before validation/export.
+- Framing: for horizontal footage, choose an intentional vertical crop per
+  range. Keep faces, hands, important UI, and subtitles inside the vertical
+  frame. Use gameplay presets when a facecam overlay exists.
+- Captions: always export SRT. Prefer short caption chunks that track spoken
+  phrases; avoid long subtitle blocks that cover the subject.
+- B-roll: use B-roll only when it clarifies the point, hides a jump cut, or
+  adds necessary visual evidence. Do not bury the speaker under generic filler.
+- Handoff: for Shorts, render a preview and run QA when framing or captions are
+  important, because vertical crop mistakes are hard to see from EDL alone.
 
 ## EDL Contract
 

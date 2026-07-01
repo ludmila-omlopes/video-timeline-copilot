@@ -22,6 +22,8 @@ The primary output is an editable timeline, not a flattened MP4.
   and transcript-aware word-boundary snapping.
 - Separates mixed source audio into Demucs stems so buried voice and background
   music can be adjusted on separate tracks.
+- Documents Shorts-specific editing defaults for hook, pacing, vertical framing,
+  captions, B-roll, and QA.
 - Lets Codex reason about the edit and write `edit/edl.json`.
 - Validates the EDL before any editor-specific export and warns about obvious
   cut-craft problems when transcript timings are available.
@@ -537,7 +539,9 @@ ranges yet; use the FCPXML path for edits with speed changes.
 See [SKILL.md](SKILL.md) for Codex usage rules, [install.md](install.md) for
 setup details, [docs/architecture.md](docs/architecture.md) for internals,
 [docs/audio-analysis.md](docs/audio-analysis.md) for silence-cut behavior, and
-[docs/e2e-test.md](docs/e2e-test.md) for release validation.
+[docs/shorts-guidelines.md](docs/shorts-guidelines.md) for Shorts-specific
+editing guidance. Use [docs/e2e-test.md](docs/e2e-test.md) for release
+validation.
 
 ## Contact
 
