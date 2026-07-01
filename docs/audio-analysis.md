@@ -27,9 +27,24 @@ Default behavior:
 
 The helper writes `edit/edl.json`. The result should be treated as a draft
 timeline for agent or manual refinement, not a finished creative edit.
+
+After creating or manually editing an EDL for speech, run:
+
+```powershell
+vtc refine-audio-cuts .\my-video\edit\edl.json --replace
+```
+
+This post-pass uses source audio, not transcript text, to protect word edges.
+It decodes short windows around each cut, finds RMS activity close to the
+boundary, and only expands the cut outward when there is audible material
+attached to that boundary. It does not choose different phrases or remove more
+content.
+
 Validation reports kept transcript gaps longer than the configured
 `max_word_gap`, and self-evaluation blocks those long gaps so awkward pauses do
-not silently pass QA.
+not silently pass QA. Validation also warns when the timeline keeps only part of
+a transcript-backed sentence/segment, which catches cuts that land cleanly
+between words but still drop the beginning or end of a spoken phrase.
 Validation also blocks record gaps, record overlaps, and clips shorter than the
 minimum duration.
 

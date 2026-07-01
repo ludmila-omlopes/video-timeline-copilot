@@ -23,7 +23,9 @@ explicitly asks for a render.
 1. The primary artifact is an editable timeline.
 2. The LLM writes edit intent as `edl.json`; helper scripts execute it.
 3. Transcripts are cached per source and reused.
-4. Cuts must land on word boundaries whenever speech is the basis for the edit.
+4. Cuts must land on audio-safe word boundaries whenever speech is the basis
+   for the edit. Use transcript timings for intent, then audio activity around
+   each boundary to avoid trimming the first or last phoneme.
 5. Infer sensible defaults from the current folder before asking questions.
 6. All session outputs go in the footage folder's `edit/` directory.
 7. Always validate the EDL before exporting.
@@ -31,7 +33,9 @@ explicitly asks for a render.
 9. When the user asks for a technical preview or when visual/technical timeline
    integrity is in doubt, render an MP4 preview and run QA before final handoff.
 10. Run final self-evaluation before handoff. If it fails, revise the EDL and
-    rerun exports/evaluation up to the configured attempt limit.
+    rerun exports/evaluation up to the configured attempt limit. For
+    transcript-backed speech edits, use strict cut warnings so incomplete
+    words, phrases, or sentence fragments block handoff.
 11. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
    and FCPXML generation and tell the user to import the FCPXML manually.
 12. Repeated delivery, false starts, and self-corrections are not useful
@@ -152,7 +156,9 @@ For simple requests, choose conservative defaults:
   seconds of padding before and after speech ranges. Prefer
   `vtc draft-silence-cut` for the first deterministic pass when the user wants
   mechanical silence removal; it removes transcript word gaps even when the
-  audio is not technically silent. Then refine the generated EDL if needed.
+  audio is not technically silent. Then run `vtc refine-audio-cuts --replace`
+  so cut boundaries are expanded by source audio activity, not only transcript
+  word timestamps.
   Also collapse repeated takes: if the speaker restarts the same sentence or
   repeats the same point nearby, include only one version. Do not leave record
   gaps or half-second fragments; keep clips at least 0.8 seconds unless a
@@ -162,6 +168,12 @@ For simple requests, choose conservative defaults:
 - "highlight" / "best moments": prioritize clear, self-contained transcript
   phrases and avoid isolated filler words, false starts, and duplicate
   deliveries.
+- "gameplay" with a facecam overlay: use transform presets instead of raw
+  pan/tilt guesses. For a facecam-only scene, use `preset:
+  gameplay-facecam` with the known facecam rectangle. For the gameplay/screen
+  scene, use `preset: gameplay-screen` with the same facecam rectangle so the
+  helper zooms into the largest remaining screen region and does not show the
+  facecam again.
 
 Treat `takes_packed.md` notes such as `possible repeated take` as warnings that
 the marked phrase probably duplicates an earlier attempt. Do not place both
@@ -206,19 +218,41 @@ there is ambiguity.
    Then inspect/refine the generated EDL when the request requires more than
    mechanical silence removal.
 
-6. Validate:
+6. Refine speech cut boundaries from the source audio:
+
+   ```bash
+   vtc refine-audio-cuts /path/to/footage/edit/edl.json --replace
+   ```
+
+   This expands cut starts/ends outward only when RMS activity is found close
+   to the boundary. It is meant to catch transcript timestamps that end a word
+   slightly before the audible phoneme finishes.
+
+   If the user needs to rebalance baked-in voice and background music, split the
+   source audio into Demucs stems:
+
+   ```bash
+   vtc separate-audio /path/to/footage/raw/interview.mp4 --edit-dir /path/to/footage/edit
+   ```
+
+   The default output is a two-stem vocal split under
+   `edit/audio/demucs/htdemucs/<source>/` with `vocals.wav`, `no_vocals.wav`,
+   and `vtc_stems.json`. Use `--mode 4-stem` for vocals, drums, bass, and
+   other.
+
+7. Validate:
 
    ```bash
    vtc validate-edl /path/to/footage/edit/edl.json
    ```
 
-7. Generate subtitles:
+8. Generate subtitles:
 
    ```bash
    vtc export-srt /path/to/footage/edit/edl.json
    ```
 
-8. Export FCPXML fallback:
+9. Export FCPXML fallback:
 
    ```bash
    vtc export-fcpxml /path/to/footage/edit/edl.json
@@ -248,7 +282,7 @@ there is ambiguity.
    explicitly wants to replace the base EDL; the helper validates a temporary
    import and writes an `edl.bak.json` backup before replacing.
 
-9. Optionally render a technical preview and QA report:
+10. Optionally render a technical preview and QA report:
 
    ```bash
    vtc render-preview /path/to/footage/edit/edl.json
@@ -267,10 +301,10 @@ there is ambiguity.
    duration mismatches, transform coverage failures, audio-only/video-only
    regions, record gaps, record overlaps, and short clips as issues to correct.
 
-10. Run self-evaluation before final handoff:
+11. Run self-evaluation before final handoff:
 
    ```bash
-   vtc evaluate-edl /path/to/footage/edit/edl.json --require-preview --attempt 1 --max-attempts 3
+   vtc evaluate-edl /path/to/footage/edit/edl.json --require-preview --strict-cut-warnings --attempt 1 --max-attempts 3
    ```
 
    Default output:
@@ -284,7 +318,7 @@ there is ambiguity.
    next `--attempt` value. Stop after `--max-attempts`; if the status is still
    `blocked`, tell the user what failed instead of continuing to iterate.
 
-11. Build Resolve project when external scripting is available:
+12. Build Resolve project when external scripting is available:
 
    ```bash
    vtc resolve-env-check
@@ -307,7 +341,8 @@ there is ambiguity.
 Use `vtc evaluate-edl` as the final gate before handoff. It checks:
 
 - export validity through `vtc validate-edl` rules
-- cut-craft warnings such as cuts inside spoken words
+- cut-craft warnings such as cuts inside spoken words or partial
+  transcript-backed sentences/segments
 - preview QA when `edit/qa/preview_report.json` exists
 - duration, audio-only, and video-only preview failures
 - agent-review criteria for prompt alignment, pacing, and visual coherence
@@ -382,6 +417,24 @@ retimes as Resolve-compatible `timeMap` entries so the speed change remains
 editable after import. FCPXML imports from Resolve may also include
 `record_duration` to preserve Resolve's frame-rounded clip duration.
 
+For gameplay recordings with a facecam overlay, transform presets can derive
+safe zoom/pan/tilt values from a facecam rectangle:
+
+```json
+{
+  "transform": {
+    "preset": "gameplay-facecam",
+    "facecam": {"x": 1600, "y": 720, "width": 320, "height": 360}
+  }
+}
+```
+
+Use `gameplay-facecam` when the scene should crop into the camera. Use
+`gameplay-screen` with the same `facecam` rectangle when the scene should show
+the gameplay/screen area while excluding the facecam. Rectangles can be pixel
+coordinates or normalized values from `0.0` to `1.0`. Optional `padding`
+expands the excluded/focused facecam rectangle before calculating the transform.
+
 ## Cut Craft Rules
 
 By default, place cuts on complete word, phrase, sentence, beat, pause, or clear
@@ -390,16 +443,23 @@ and incomplete phrases unless the user explicitly asks for a deliberately
 aggressive or stylized edit. Prefer the cleanest complete delivery when nearby
 phrases repeat the same idea.
 
-For tight social edits, remove more dead air but preserve word starts/ends,
-keep record_start values contiguous, and avoid sub-minimum clips. For
-documentary and long-form edits, preserve more natural pauses and avoid rapid
-jump cuts unless the visual continuity is acceptable. For highlights, favor
-self-contained phrases and avoid isolated filler words.
+For tight social edits, remove more dead air but preserve audible word
+starts/ends, keep record_start values contiguous, and avoid sub-minimum clips.
+For documentary and long-form edits, preserve more natural pauses and avoid
+rapid jump cuts unless the visual continuity is acceptable. For highlights,
+favor self-contained phrases and avoid isolated filler words.
 
 Always run `vtc validate-edl` before export. When transcript timings exist, the
-validator warns if a source cut appears to land inside a spoken word. Validation
+validator warns if a source cut appears to land inside a spoken word or if the
+timeline keeps only part of a transcript-backed sentence/segment. Validation
 fails when a timeline has record gaps, record overlaps, or clips shorter than
-the minimum duration.
+the minimum duration. Final `vtc evaluate-edl` treats speech-boundary warnings
+as blockers for handoff.
+
+Before validation/export on speech edits, run `vtc refine-audio-cuts --replace`
+on the EDL. The helper does not choose new dialogue content; it only expands
+existing source_start/source_end boundaries outward when nearby source audio
+indicates that the transcript timestamp would clip the audible word edge.
 
 ## Resolve Caveats
 

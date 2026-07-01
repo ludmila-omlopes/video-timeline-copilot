@@ -55,7 +55,12 @@ def _qa_warnings(report: dict) -> list[str]:
 
 
 def _is_blocking_cut_warning(warning: str) -> bool:
-    return "keeps a long" in warning and "transcript gap" in warning
+    blocking_fragments = (
+        "cuts inside word",
+        "keeps only part of",
+        "keeps a long",
+    )
+    return any(fragment in warning for fragment in blocking_fragments)
 
 
 def _revision_guidance(blockers: list[str], warnings: list[str]) -> list[str]:
