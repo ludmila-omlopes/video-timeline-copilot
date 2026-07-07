@@ -161,6 +161,11 @@ python -m pip install -e ".[transcribe]"
 vtc --help
 ```
 
+## Development
+
+Contributor and agent guidelines (dev setup, repo map, conventions, CI gates)
+live in [AGENTS.md](AGENTS.md).
+
 ## Platform Compatibility
 
 Current status:
@@ -239,6 +244,11 @@ vtc evaluate-edl .\my-video\edit\edl.json --require-preview --strict-cut-warning
 `possible repeated take`. Those notes are meant for the editing pass: keep only
 the cleanest complete version of a restarted sentence or repeated point unless
 the repetition is intentionally part of the video.
+
+It also annotates partial restarts and immediate corrections as
+`possible self-correction/restart`. Tune that detector with
+`--restart-overlap-words` and `--restart-max-gap` when a transcript needs a
+stricter or looser pass.
 
 `vtc analyze-video` adds a local visual context layer before the agent chooses
 cuts:

@@ -124,10 +124,12 @@ timelines or delete and recreate matching timelines when requested. This keeps
 iterative agent edits possible while Resolve is open, without treating the
 currently selected timeline as mutable source of truth.
 
-Future backends should read the same EDL:
+Existing backends that read the same EDL: `export_fcpxml.py`,
+`update_fcpxml.py`, `import_fcpxml.py`, `build_resolve_project.py`, and
+`update_resolve_timeline.py`.
 
-- `export_fcpxml.py`
-- `update_fcpxml.py`
+Future backend candidates should read the same EDL:
+
 - `export_otio.py`
 - `export_edl.py`
 - `build_premiere_project.py`
