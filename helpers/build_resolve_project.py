@@ -79,6 +79,8 @@ def create_timelines_from_edl(project, resolve, edl: dict, footage_root: Path, *
             fail(f"Timeline {timeline_index} contains clips shorter than {min_clip_duration:.3f}s.")
         if any(abs(range_effective_speed(item) - 1.0) > 1e-6 for item in timeline_spec.get("ranges") or []):
             fail("Resolve scripting backend does not support retimed ranges yet; export FCPXML instead.")
+        if any(item.get("visual_layers") for item in timeline_spec.get("ranges") or []):
+            fail("Resolve scripting backend does not support visual_layers yet; export FCPXML instead.")
 
         requested_name = timeline_spec["name"]
         timeline_name = requested_name

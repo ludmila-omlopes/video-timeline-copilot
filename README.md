@@ -240,6 +240,18 @@ vtc qa-preview .\my-video\edit\edl.json
 vtc evaluate-edl .\my-video\edit\edl.json --require-preview --strict-cut-warnings
 ```
 
+`vtc transcribe` defaults to `--device auto --compute-type auto`. On Windows,
+if `faster-whisper` detects CUDA but the CUDA runtime DLLs are missing, for
+example `cublas64_12.dll`, the helper retries on CPU with `int8`. To skip GPU
+probing entirely, run:
+
+```powershell
+vtc transcribe .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit --device cpu --compute-type int8
+```
+
+If you explicitly pass `--device cuda`, CUDA errors are left visible so the
+local NVIDIA/CUDA installation can be fixed instead of silently using CPU.
+
 `vtc pack-transcripts` annotates nearby repeated deliveries as
 `possible repeated take`. Those notes are meant for the editing pass: keep only
 the cleanest complete version of a restarted sentence or repeated point unless

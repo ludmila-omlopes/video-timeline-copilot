@@ -127,6 +127,93 @@ def test_validate_rejects_non_positive_speed(tmp_path: Path) -> None:
     assert any("speed must be greater than 0" in error for error in errors)
 
 
+def test_validate_accepts_visual_layers_on_a_single_timing_range(tmp_path: Path) -> None:
+    errors = validate(
+        write_edl(
+            tmp_path,
+            range_overrides={
+                "visual_layers": [
+                    {
+                        "name": "Facecam",
+                        "source_rect": {"x": 0, "y": 0, "width": 0.25, "height": 0.35},
+                        "dest_rect": {"x": 0, "y": 0, "width": 1, "height": 0.45},
+                    },
+                    {
+                        "name": "Screen",
+                        "source_rect": {"x": 0.1, "y": 0.1, "width": 0.7, "height": 0.7},
+                        "dest_rect": {"x": 0, "y": 0.5, "width": 1, "height": 0.45},
+                    },
+                ]
+            },
+        )
+    )
+
+    assert errors == []
+
+
+def test_validate_rejects_invalid_visual_layer_rects(tmp_path: Path) -> None:
+    errors = validate(
+        write_edl(
+            tmp_path,
+            range_overrides={
+                "visual_layers": [
+                    {
+                        "source": "MISSING",
+                        "source_rect": {"x": 0, "y": 0, "width": 0, "height": 0.35},
+                    }
+                ]
+            },
+        )
+    )
+
+    assert any("visual_layers[0].source must reference a known source" in error for error in errors)
+    assert any("source_rect width and height must be greater than 0" in error for error in errors)
+    assert any("dest_rect is required" in error for error in errors)
+
+
+def test_validate_rejects_duplicate_visual_layer_lanes(tmp_path: Path) -> None:
+    errors = validate(
+        write_edl(
+            tmp_path,
+            range_overrides={
+                "visual_layers": [
+                    {
+                        "lane": 1,
+                        "source_rect": {"x": 0, "y": 0, "width": 0.25, "height": 0.35},
+                        "dest_rect": {"x": 0, "y": 0, "width": 1, "height": 0.45},
+                    },
+                    {
+                        "lane": 1,
+                        "source_rect": {"x": 0.1, "y": 0.1, "width": 0.7, "height": 0.7},
+                        "dest_rect": {"x": 0, "y": 0.5, "width": 1, "height": 0.45},
+                    },
+                ]
+            },
+        )
+    )
+
+    assert any("visual_layers[1].lane duplicates lane 1" in error for error in errors)
+
+
+def test_validate_rejects_non_positive_visual_layer_lane(tmp_path: Path) -> None:
+    errors = validate(
+        write_edl(
+            tmp_path,
+            range_overrides={
+                "visual_layers": [
+                    {
+                        "lane": 0,
+                        "source_rect": {"x": 0, "y": 0, "width": 0.25, "height": 0.35},
+                        "dest_rect": {"x": 0, "y": 0, "width": 1, "height": 0.45},
+                    }
+                ]
+            },
+        )
+    )
+
+    assert any("visual_layers[0].lane must be a positive integer" in error for error in errors)
+
+
 def test_cut_inside_word_detects_strict_interior_but_not_boundary_tolerance() -> None:
     words = [{"start": 1.0, "end": 2.0, "text": "hello"}]
 

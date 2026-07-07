@@ -497,6 +497,35 @@ the gameplay/screen area while excluding the facecam. Rectangles can be pixel
 coordinates or normalized values from `0.0` to `1.0`. Optional `padding`
 expands the excluded/focused facecam rectangle before calculating the transform.
 
+For Shorts that need the facecam and screen visible at the same time, keep a
+single timing/audio range and add `visual_layers`. Each layer crops a source
+region into a destination region on the vertical canvas. This exports as one
+primary audio clip with connected video-only layers in FCPXML, and the preview
+renderer composites the same layered layout. When a layer's `source_rect` and
+`dest_rect` aspect ratios differ, the crop is tightened around its center to
+match the destination aspect in both preview and FCPXML output:
+
+```json
+{
+  "source": "A001",
+  "source_start": 325.333,
+  "source_end": 338.866,
+  "record_start": 0,
+  "visual_layers": [
+    {
+      "name": "Facecam",
+      "source_rect": {"x": 0.0, "y": 0.43, "width": 0.24, "height": 0.36},
+      "dest_rect": {"x": 0.0, "y": 0.0, "width": 1.0, "height": 0.45}
+    },
+    {
+      "name": "Screen",
+      "source_rect": {"x": 0.13, "y": 0.12, "width": 0.67, "height": 0.67},
+      "dest_rect": {"x": 0.0, "y": 0.50, "width": 1.0, "height": 0.45}
+    }
+  ]
+}
+```
+
 ## Cut Craft Rules
 
 By default, place cuts on complete word, phrase, sentence, beat, pause, or clear

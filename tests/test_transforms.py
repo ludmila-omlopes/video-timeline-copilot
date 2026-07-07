@@ -1,6 +1,16 @@
 from __future__ import annotations
 
-from helpers.transforms import Rect, gameplay_screen_rect, minimum_zoom_for_position, resolve_transform, transform_coverage_issue
+from helpers.transforms import (
+    Rect,
+    aspect_fill_crop_rect,
+    gameplay_screen_rect,
+    layer_transform,
+    minimum_zoom_for_position,
+    resolve_transform,
+    transform_coverage_issue,
+    visual_layer_dest_rect,
+    visual_layer_source_rect,
+)
 
 
 def test_minimum_zoom_for_position_compensates_pan_and_tilt() -> None:
@@ -66,3 +76,55 @@ def test_transform_coverage_issue_reports_empty_space_risk() -> None:
     assert issue["range_index"] == 2
     assert issue["requested_zoom"] == 1.07
     assert issue["minimum_zoom"] == 1.28
+
+
+def test_visual_layer_rects_support_normalized_coordinates() -> None:
+    layer = {
+        "source_rect": {"x": 0.0, "y": 0.5, "width": 0.25, "height": 0.25},
+        "dest_rect": {"x": 0.0, "y": 0.5, "width": 1.0, "height": 0.25},
+    }
+
+    source = visual_layer_source_rect(layer, 1920, 1080)
+    dest = visual_layer_dest_rect(layer, 1080, 1920)
+
+    assert source == Rect(0.0, 540.0, 480.0, 270.0)
+    assert dest == Rect(0.0, 960.0, 1080.0, 480.0)
+
+
+def test_aspect_fill_crop_rect_shrinks_taller_source() -> None:
+    crop = aspect_fill_crop_rect(Rect(0.0, 270.0, 480.0, 540.0), Rect(0.0, 0.0, 1080.0, 864.0))
+
+    assert crop == Rect(0.0, 348.0, 480.0, 384.0)
+
+
+def test_aspect_fill_crop_rect_keeps_matching_aspect() -> None:
+    source = Rect(10.0, 20.0, 500.0, 400.0)
+
+    assert aspect_fill_crop_rect(source, Rect(0.0, 0.0, 1000.0, 800.0)) == source
+
+
+def test_layer_transform_maps_crop_center_to_dest_center() -> None:
+    position_x, position_y, scale = layer_transform(
+        Rect(0.0, 348.0, 480.0, 384.0),
+        Rect(0.0, 0.0, 1080.0, 864.0),
+        1920,
+        1080,
+        1080,
+        1920,
+    )
+
+    assert position_x == 1620.0
+    assert position_y == 528.0
+    assert scale == 2.25
+
+    identity_x, identity_y, identity_scale = layer_transform(
+        Rect(0.0, 0.0, 1920.0, 1080.0),
+        Rect(0.0, 0.0, 1920.0, 1080.0),
+        1920,
+        1080,
+        1920,
+        1080,
+    )
+    assert identity_x == 0.0
+    assert identity_y == 0.0
+    assert identity_scale == 1.0

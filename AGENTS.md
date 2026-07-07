@@ -30,7 +30,7 @@ The full test suite runs in under a second on a warm local checkout. FFmpeg, FFp
 - `helpers/common.py` - shared JSON, path-safety, safe filename, frame, and SRT timestamp helpers.
 - `helpers/draft_silence_cut.py` - creates deterministic draft EDLs by removing detected silence.
 - `helpers/evaluate_edl.py` - evaluates an EDL before final handoff.
-- `helpers/export_fcpxml.py` - exports FCPXML from a video-timeline-copilot EDL.
+- `helpers/export_fcpxml.py` - exports FCPXML from a video-timeline-copilot EDL; see `docs/fcpxml.md` before changing generation/import semantics.
 - `helpers/export_srt.py` - generates SRT subtitle files from an EDL and transcript cache.
 - `helpers/import_fcpxml.py` - imports an edited FCPXML back into a video-timeline-copilot EDL.
 - `helpers/installer.py` - installs video-timeline-copilot for Claude and Codex.
@@ -49,7 +49,7 @@ The full test suite runs in under a second on a warm local checkout. FFmpeg, FFp
 - `helpers/validate_edl.py` - validates video-timeline-copilot EDL JSON.
 - `helpers/video_analysis.py` - analyzes source video context into `edit/video_analysis/*.json`.
 
-See `docs/architecture.md` for the data flow between inventory, transcript packing, EDL intent, validation, preview, QA, and editor backends.
+See `docs/architecture.md` for the data flow between inventory, transcript packing, EDL intent, validation, preview, QA, and editor backends. See `docs/fcpxml.md` before changing FCPXML generation/import; it documents the timing, anchoring, geometry, and resource rules the exporters must uphold.
 
 # Conventions
 
