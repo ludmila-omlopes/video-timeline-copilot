@@ -257,6 +257,7 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
         segments: list[Path] = []
         cursor = 0.0
         frame_tolerance = 0.5 / fps
+        stream_types_by_source: dict[str, set[str]] = {}
         for index, item in enumerate(ranges):
             record_start = float(item.get("record_start", cursor))
             if record_start - cursor > frame_tolerance:
@@ -269,7 +270,12 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
             duration = range_timeline_duration(item)
             if source_duration <= 0 or duration <= 0:
                 raise ValueError(f"range {index + 1} duration must be positive")
-            source = source_paths[item["source"]]
+            source_id = item["source"]
+            source = source_paths[source_id]
+            types = stream_types_by_source.get(source_id)
+            if types is None:
+                types = stream_types(source)
+                stream_types_by_source[source_id] = types
             segment_path = tmp_dir / f"{index:04d}_clip.mp4"
             subprocess.run(
                 _segment_args(
@@ -281,7 +287,7 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
                     height,
                     fps,
                     segment_path,
-                    stream_types(source),
+                    types,
                     item.get("transform"),
                 ),
                 check=True,

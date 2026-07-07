@@ -37,6 +37,25 @@ def source_path_for_edl(video: Path, footage_root: Path) -> str:
         return str(video.resolve())
 
 
+def parse_silencedetect_output(stderr: str) -> list[dict]:
+    silences: list[dict] = []
+    current_start: float | None = None
+    for line in stderr.splitlines():
+        start_match = re.search(r"silence_start:\s*([0-9.]+)", line)
+        if start_match:
+            current_start = float(start_match.group(1))
+            continue
+
+        end_match = re.search(r"silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)", line)
+        if end_match:
+            end = float(end_match.group(1))
+            detected_duration = float(end_match.group(2))
+            start = current_start if current_start is not None else max(0.0, end - detected_duration)
+            silences.append({"start": start, "end": end, "duration": detected_duration})
+            current_start = None
+    return silences
+
+
 def detect_silences(video: Path, noise: str, duration: float) -> list[dict]:
     cmd = [
         find_ffmpeg(),
@@ -54,22 +73,7 @@ def detect_silences(video: Path, noise: str, duration: float) -> list[dict]:
     if proc.returncode != 0:
         raise RuntimeError(proc.stderr.strip() or f"ffmpeg silencedetect failed with exit code {proc.returncode}")
 
-    silences: list[dict] = []
-    current_start: float | None = None
-    for line in proc.stderr.splitlines():
-        start_match = re.search(r"silence_start:\s*([0-9.]+)", line)
-        if start_match:
-            current_start = float(start_match.group(1))
-            continue
-
-        end_match = re.search(r"silence_end:\s*([0-9.]+)\s*\|\s*silence_duration:\s*([0-9.]+)", line)
-        if end_match:
-            end = float(end_match.group(1))
-            detected_duration = float(end_match.group(2))
-            start = current_start if current_start is not None else max(0.0, end - detected_duration)
-            silences.append({"start": start, "end": end, "duration": detected_duration})
-            current_start = None
-    return silences
+    return parse_silencedetect_output(proc.stderr)
 
 
 def complement_silences(silences: list[dict], total_duration: float) -> list[dict]:

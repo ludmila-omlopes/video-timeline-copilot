@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from helpers.cli import COMMANDS
 from helpers.qa_preview import default_contact_sheet_path, default_report_path, qa_preview
-from helpers.render_preview import _segment_args, preview_path
+from helpers.render_preview import _segment_args, preview_path, render_preview
 
 
 def write_preview_edl(tmp_path: Path) -> Path:
@@ -116,6 +117,55 @@ def test_segment_args_apply_speed_to_audio_and_video(tmp_path: Path, monkeypatch
     assert "atempo=2" in args[args.index("-af") + 1]
     assert args[args.index("-af") + 1].endswith("apad")
 
+
+def test_render_preview_probes_each_source_once(tmp_path: Path, monkeypatch) -> None:
+    raw_dir = tmp_path / "raw"
+    edit_dir = tmp_path / "edit"
+    raw_dir.mkdir()
+    edit_dir.mkdir()
+    (raw_dir / "clip.mp4").write_bytes(b"")
+    edl_path = edit_dir / "edl.json"
+    edl_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "project_name": "Probe Cache",
+                "fps": 30,
+                "timelines": [
+                    {
+                        "name": "Main",
+                        "resolution": [1920, 1080],
+                        "sources": {"s1": "raw/clip.mp4"},
+                        "ranges": [
+                            {"source": "s1", "source_start": 0.0, "source_end": 1.0, "record_start": 0.0},
+                            {"source": "s1", "source_start": 1.0, "source_end": 2.0, "record_start": 1.0},
+                            {"source": "s1", "source_start": 2.0, "source_end": 3.0, "record_start": 2.0},
+                        ],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    probed_sources = []
+    subprocess_calls = []
+
+    def fake_stream_types(path: Path) -> set[str]:
+        probed_sources.append(path)
+        return {"video", "audio"}
+
+    def fake_run(args: list[str], check: bool) -> SimpleNamespace:
+        subprocess_calls.append(args)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr("helpers.render_preview.find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr("helpers.render_preview.stream_types", fake_stream_types)
+    monkeypatch.setattr("helpers.render_preview.subprocess.run", fake_run)
+
+    render_preview(edl_path)
+
+    assert len(probed_sources) == 1
+    assert len(subprocess_calls) == 4
 
 def test_qa_preview_writes_report_without_external_probe(tmp_path: Path, monkeypatch) -> None:
     edl_path = write_preview_edl(tmp_path)

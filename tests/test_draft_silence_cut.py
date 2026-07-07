@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 from helpers.draft_silence_cut import (
     complement_silences,
+    detect_silences,
     draft_ranges,
     merge_ranges,
     merge_ranges_preserving_word_gaps,
     normalize_negative_noise_arg,
     pad_ranges,
+    parse_silencedetect_output,
     parse_frame_rate,
     split_ranges_on_word_gaps,
     snap_to_words,
@@ -20,6 +25,54 @@ def test_parse_frame_rate_handles_ratios_numbers_and_defaults() -> None:
     assert parse_frame_rate("25") == 25.0
     assert parse_frame_rate(None) == 30.0
     assert parse_frame_rate("0/0") == 30.0
+
+
+def test_parse_silencedetect_extracts_paired_silences() -> None:
+    stderr = """
+[silencedetect @ 0000021c4f4a1b40] silence_start: 1.30245
+frame=  120 fps= 60 q=-0.0 size=N/A time=00:00:04.00 bitrate=N/A speed=  30x
+[silencedetect @ 0000021c4f4a1b40] silence_end: 3.5045 | silence_duration: 2.20205
+[silencedetect @ 0000021c4f4a1b40] silence_start: 6.0
+[silencedetect @ 0000021c4f4a1b40] silence_end: 7.25 | silence_duration: 1.25
+"""
+
+    assert parse_silencedetect_output(stderr) == [
+        {"start": 1.30245, "end": 3.5045, "duration": 2.20205},
+        {"start": 6.0, "end": 7.25, "duration": 1.25},
+    ]
+
+
+def test_parse_silencedetect_ignores_unrelated_lines() -> None:
+    stderr = """
+Stream mapping:
+  Stream #0:0 -> #0:0 (aac (native) -> pcm_s16le (native))
+[silencedetect @ 0000021c4f4a1b40] silence_start: 0.75
+frame=   42 fps=0.0 q=-0.0 size=N/A time=00:00:01.40 bitrate=N/A speed=2.78x
+[silencedetect @ 0000021c4f4a1b40] silence_end: 2.0 | silence_duration: 1.25
+video:0kB audio:512kB subtitle:0kB other streams:0kB global headers:0kB
+"""
+
+    assert parse_silencedetect_output(stderr) == [{"start": 0.75, "end": 2.0, "duration": 1.25}]
+
+
+def test_parse_silencedetect_derives_start_from_duration_when_missing() -> None:
+    stderr = "[silencedetect @ 0000021c4f4a1b40] silence_end: 5.0 | silence_duration: 2.0"
+
+    assert parse_silencedetect_output(stderr) == [{"start": 3.0, "end": 5.0, "duration": 2.0}]
+
+
+def test_parse_silencedetect_drops_trailing_unclosed_silence() -> None:
+    stderr = """
+[silencedetect @ 0000021c4f4a1b40] silence_start: 1.0
+[silencedetect @ 0000021c4f4a1b40] silence_end: 2.0 | silence_duration: 1.0
+[silencedetect @ 0000021c4f4a1b40] silence_start: 8.0
+"""
+
+    assert parse_silencedetect_output(stderr) == [{"start": 1.0, "end": 2.0, "duration": 1.0}]
+
+
+def test_parse_silencedetect_returns_empty_for_empty_stderr() -> None:
+    assert parse_silencedetect_output("") == []
 
 
 def test_complement_silences_returns_full_range_without_silence() -> None:
@@ -222,6 +275,17 @@ def test_draft_ranges_does_not_remerge_trimmed_word_gap(tmp_path, monkeypatch) -
     )
 
     assert ranges == [{"start": 0.25, "end": 1.25}, {"start": 1.59, "end": 2.35}]
+
+
+def test_detect_silences_raises_on_ffmpeg_failure(monkeypatch) -> None:
+    monkeypatch.setattr("helpers.draft_silence_cut.find_ffmpeg", lambda: "ffmpeg")
+    monkeypatch.setattr(
+        "helpers.draft_silence_cut.subprocess.run",
+        lambda cmd, capture_output, text: SimpleNamespace(returncode=1, stderr="boom"),
+    )
+
+    with pytest.raises(RuntimeError, match="boom"):
+        detect_silences(Path("x.mp4"), "-35dB", 0.7)
 
 
 def test_normalize_negative_noise_arg_joins_negative_noise_value() -> None:

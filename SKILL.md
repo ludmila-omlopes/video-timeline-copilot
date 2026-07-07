@@ -183,11 +183,14 @@ For simple requests, choose conservative defaults:
   with the same known facecam rectangle, so the screen-focused scene excludes
   the facecam instead of showing it again.
 
-Treat `takes_packed.md` notes such as `possible repeated take` as warnings that
-the marked phrase probably duplicates an earlier attempt. Do not place both
-versions on the timeline unless the user's request explicitly asks to show the
-repetition. Prefer the more complete, fluent, and contextually useful delivery;
-often that is the later take after the speaker restarted.
+Treat `takes_packed.md` notes such as `possible repeated take` and
+`possible self-correction/restart` as warnings that the marked phrase probably
+duplicates or corrects an earlier attempt. Do not place both versions on the
+timeline unless the user's request explicitly asks to show the repetition.
+Prefer the more complete, fluent, and contextually useful delivery; often that
+is the later take after the speaker restarted. If the restart detector is too
+strict or too loose for a transcript, rerun `vtc pack-transcripts` with
+`--restart-overlap-words` or `--restart-max-gap`.
 
 If an edit strategy could materially change the user's intended story, briefly
 state the strategy before writing the EDL. For straightforward mechanical
