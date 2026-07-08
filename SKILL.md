@@ -330,6 +330,15 @@ there is ambiguity.
    Read `preview_report.json` before handoff when using this path. Treat
    duration mismatches, transform coverage failures, audio-only/video-only
    regions, record gaps, record overlaps, and short clips as issues to correct.
+   When FCPXML geometry itself is under inspection, render the exported XML
+   separately instead of relying only on the EDL preview:
+
+   ```bash
+   vtc render-fcpxml-preview /path/to/footage/edit/timeline.fcpxml --resolve-crop-x-factor 2
+   ```
+
+   Use this to compare the actual exported XML layout against the EDL preview
+   when debugging Resolve crop/transform import behavior.
 
 12. Run self-evaluation before final handoff:
 
@@ -499,11 +508,14 @@ expands the excluded/focused facecam rectangle before calculating the transform.
 
 For Shorts that need the facecam and screen visible at the same time, keep a
 single timing/audio range and add `visual_layers`. Each layer crops a source
-region into a destination region on the vertical canvas. This exports as one
-primary audio clip with connected video-only layers in FCPXML, and the preview
-renderer composites the same layered layout. When a layer's `source_rect` and
-`dest_rect` aspect ratios differ, the crop is tightened around its center to
-match the destination aspect in both preview and FCPXML output:
+region into a destination region on the vertical canvas. The preview renderer
+composites the layered layout. FCPXML export promotes a same-source gameplay or
+screen layer to the primary visible clip when possible, then writes the
+remaining layers as connected video clips above it; this matches Resolve's own
+export style for vertical gameplay/facecam timelines. When a layer's
+`source_rect` and `dest_rect` aspect ratios differ, the crop is tightened
+around its center to match the destination aspect in both preview and FCPXML
+output:
 
 ```json
 {

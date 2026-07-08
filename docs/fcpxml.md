@@ -53,45 +53,73 @@ integer and unique within the parent range.
 
 ## Visual Layers
 
-`visual_layers` keep one primary timing/audio range and add nested video-only
-connected clips. The primary clip gets `srcEnable="audio"`; all visible video
-comes from the nested layers. If the base source video should be visible, the
-EDL must include a layer for it.
+`visual_layers` keep one primary timing/audio range and add one or more visual
+regions. For Resolve import compatibility, the exporter promotes one eligible
+same-source layer to the primary visible `asset-clip` when possible. It prefers
+layers named like `gameplay`, `screen`, `main`, or `base`, then the largest
+destination rectangle. Other layers become nested connected video clips above
+the primary clip.
 
-Each layer uses:
+If no layer can safely carry the range's primary audio timing, the exporter
+falls back to an audio-only primary clip with every visual layer nested as a
+connected video clip.
+
+Connected layers use:
 
 - an `asset-clip` nested inside the primary clip,
 - a positive `lane`,
 - `offset` equal to the parent clip's `start`,
 - `start` equal to the layer source in-point,
 - `srcEnable="video"`,
-- `adjust-crop`, `adjust-conform`, and `adjust-transform` to map source pixels
-  to the destination rectangle.
+- `adjust-crop` and `adjust-transform` to map source pixels to the destination
+  rectangle.
 
 The geometry model mirrors `helpers/render_preview.py`: crop the authored
 `source_rect`, aspect-fill it into `dest_rect`, then center-crop any excess so
 preview MP4s and FCPXML show the same pixels. In FCPXML, the exporter tightens
 the trim rectangle to the largest centered sub-rectangle with the destination
-aspect ratio, uses `adjust-conform type="none"`, and emits a uniform transform.
+aspect ratio and emits Resolve-style `adjust-transform` values.
 
 With source size `(Ws, Hs)`, timeline size `(Wt, Ht)`, effective crop `r`, and
 destination rectangle `D`:
 
 ```text
-s = D.width / r.width
-p_x = (D.cx - Wt / 2) - s * (r.cx - Ws / 2)
-p_y = (Ht / 2 - D.cy) - s * (Hs / 2 - r.cy)
+pixel_scale = D.width / r.width
+fit_scale = min(Wt / Ws, Ht / Hs)
+xml_scale = pixel_scale / fit_scale
+crop_top_xml = 100 * r.y / Hs
+crop_bottom_xml = 100 * (Hs - r.bottom) / Hs
+p_x_pixels = (D.cx - Wt / 2) - pixel_scale * (r.cx - Ws / 2)
+p_y_pixels = Ht / 2 - D.cy
+p_x_xml = p_x_pixels / (Ht / 100)
+p_y_xml = p_y_pixels / (Ht / 100)
 ```
 
-`D` uses timeline pixels with y down. FCPXML transform position uses the
-repo's Resolve-oriented y-up convention.
+`D` uses timeline pixels with y down. `trim-rect` selects the source region;
+`adjust-transform position` then places the layer with Resolve's imported trim
+semantics. Horizontal position keeps source-center compensation so asymmetric
+left/right trim lands on the authored destination. Vertical position is based
+on the destination center only, using the repo's Resolve-oriented y-up
+convention.
+`xml_scale` compensates for Resolve's default fit conform on horizontal assets
+inside vertical timelines. Resolve imports FCPXML `position` values in a
+100-units-per-sequence-height coordinate space, so pixel positions are divided
+by `Ht / 100` before serialization.
+Resolve exports `trim-rect` margins as percentage-like numeric values without
+the `%` suffix, so visual-layer crop serialization follows that dialect.
+Resolve imports horizontal `left`/`right` trim through a side-specific crop
+mapping. The exporter compensates with `--resolve-crop-x-factor` and writes
+horizontal visual-layer trim as `source_trim_percent / factor`; the matching
+`render-fcpxml-preview` command interprets XML trim with the inverse formula:
+`ui_crop = xml_trim / 100 * source_width * fit_scale * factor`.
 
 Worked example: a 1920x1080 source on a 1080x1920 timeline, authored
 `source_rect` `{x: 0, y: 270, width: 480, height: 540}`, and `dest_rect`
 `{x: 0, y: 0, width: 1080, height: 864}`. The destination is wider, so the
-effective crop becomes `{x: 0, y: 348, width: 480, height: 384}`. The
-transform is `position="1620.000 528.000"` and
-`scale="2.250000 2.250000"`.
+effective crop becomes `{x: 0, y: 348, width: 480, height: 384}`. The pixel
+scale is `2.25`; after compensating for Resolve's default `0.5625` fit scale,
+the FCPXML transform is `position="84.375 27.500"` and
+`scale="4.000000 4.000000"`.
 
 This layer model is spec-derived and covered by automated tests. It still
 needs the manual Resolve comparison called out in plan 011: import the FCPXML
@@ -116,11 +144,18 @@ Some emitted XML is chosen for Resolve behavior, not just DTD validity:
 - constant speed changes use `timeMap` with two linear `timept` elements; the
   DTD says a `timeMap` defines an adjusted time range from its first and last
   points,
-- transform `position` values are timeline pixels in this repo's pinned tests,
-- layer transforms use `adjust-conform type="none"` with explicit trim and
-  transform values,
+- plain range transform `position` values are timeline pixels in this repo's
+  pinned tests, while visual-layer transforms use Resolve's imported
+  100-units-per-sequence-height coordinate space,
+- visual layer transforms avoid `adjust-conform type="none"` because Resolve
+  imports that path differently from its own exported Shorts layouts,
 - single-clip transforms without `visual_layers` still use `adjust-conform
   type="fill"` because that path is Resolve-validated.
+
+Use `vtc render-fcpxml-preview exported.fcpxml --resolve-crop-x-factor 2` to
+inspect the exported XML geometry directly. This preview is intentionally
+separate from `vtc render-preview`, which renders the EDL intent before XML
+translation.
 
 Resolve treats imported XML as a snapshot. After updating an FCPXML file,
 re-import the timeline instead of expecting an existing Resolve timeline to

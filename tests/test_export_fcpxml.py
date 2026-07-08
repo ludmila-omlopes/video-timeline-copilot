@@ -235,11 +235,12 @@ def test_build_fcpxml_exports_visual_layers_as_connected_video_clips(tmp_path: P
     layers = root.findall("./library/event/project/sequence/spine/asset-clip/asset-clip")
 
     assert primary is not None
-    assert primary.attrib["srcEnable"] == "audio"
-    assert [layer.attrib["name"] for layer in layers] == ["Facecam", "Screen"]
-    assert [layer.attrib["srcEnable"] for layer in layers] == ["video", "video"]
-    assert [layer.attrib["lane"] for layer in layers] == ["1", "2"]
-    assert [layer.attrib["offset"] for layer in layers] == [primary.attrib["start"], primary.attrib["start"]]
+    assert primary.attrib["name"] == "Screen"
+    assert "srcEnable" not in primary.attrib
+    assert [layer.attrib["name"] for layer in layers] == ["Facecam"]
+    assert [layer.attrib["srcEnable"] for layer in layers] == ["video"]
+    assert [layer.attrib["lane"] for layer in layers] == ["1"]
+    assert [layer.attrib["offset"] for layer in layers] == [primary.attrib["start"]]
 
     first_trim = layers[0].find("./adjust-crop/trim-rect")
     first_conform = layers[0].find("./adjust-conform")
@@ -247,15 +248,14 @@ def test_build_fcpxml_exports_visual_layers_as_connected_video_clips(tmp_path: P
 
     assert first_trim is not None
     assert first_trim.attrib == {
-        "left": "0.000000%",
-        "right": "75.000000%",
-        "top": "56.875000%",
-        "bottom": "31.875000%",
+        "right": "37.5",
+        "top": "56.875",
+        "bottom": "31.875",
     }
-    assert first_conform is not None
-    assert first_conform.attrib["type"] == "none"
+    assert first_conform is None
     assert first_transform is not None
-    assert first_transform.attrib["position"] == "1620.000 1488.000"
+    assert first_transform.attrib["anchor"] == "0 0"
+    assert first_transform.attrib["position"] == "84.375 27.500"
     assert first_transform.attrib["scale"] == "4.000000 4.000000"
 
 
@@ -285,8 +285,8 @@ def test_build_fcpxml_anchors_layers_at_parent_start(tmp_path: Path) -> None:
 
     assert primary is not None
     assert primary.attrib["start"] == "12s"
-    assert layers
-    assert [layer.attrib["offset"] for layer in layers] == [primary.attrib["start"]]
+    assert not layers
+    assert primary.find("./adjust-transform") is not None
 
 
 def test_build_fcpxml_layer_only_source_gets_media_duration_and_format(tmp_path: Path) -> None:
@@ -337,10 +337,81 @@ def test_build_fcpxml_layer_only_source_gets_media_duration_and_format(tmp_path:
     formats = {fmt.attrib["id"]: fmt for fmt in root.findall("./resources/format")}
     facecam = next(asset for asset in root.findall("./resources/asset") if asset.attrib["name"] == "facecam")
     facecam_format = formats[facecam.attrib["format"]]
+    facecam_layer = root.find("./library/event/project/sequence/spine/asset-clip/asset-clip")
+    assert facecam_layer is not None
 
     assert parse_fcpx_time(facecam.attrib["duration"]) == Fraction(90, 1)
     assert facecam_format.attrib["width"] == "1920"
     assert facecam_format.attrib["height"] == "1080"
+    assert facecam_layer.attrib["format"] == facecam.attrib["format"]
+
+
+def test_build_fcpxml_asset_duration_covers_visual_layers_across_timelines(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw"
+    edit_dir = tmp_path / "edit"
+    raw_dir.mkdir()
+    edit_dir.mkdir()
+    (raw_dir / "clip.mp4").write_bytes(b"")
+    edl = {
+        "version": 1,
+        "project_name": "Multi Timeline Shorts",
+        "fps": 30,
+        "timelines": [
+            {
+                "name": "Short 01",
+                "resolution": [1080, 1920],
+                "sources": {"A001": "raw/clip.mp4"},
+                "ranges": [
+                    {
+                        "source": "A001",
+                        "source_start": 10.0,
+                        "source_end": 12.0,
+                        "record_start": 0.0,
+                    }
+                ],
+            },
+            {
+                "name": "Short 02",
+                "resolution": [1080, 1920],
+                "sources": {"A001": "raw/clip.mp4"},
+                "ranges": [
+                    {
+                        "source": "A001",
+                        "source_start": 100.0,
+                        "source_end": 102.0,
+                        "record_start": 0.0,
+                        "visual_layers": [
+                            {
+                                "name": "Facecam",
+                                "source_rect": {"x": 0.0, "y": 0.0, "width": 0.2, "height": 0.2},
+                                "dest_rect": {"x": 0.0, "y": 0.0, "width": 1.0, "height": 0.35},
+                            },
+                            {
+                                "name": "Gameplay",
+                                "source_rect": {"x": 0.1, "y": 0.1, "width": 0.8, "height": 0.8},
+                                "dest_rect": {"x": 0.0, "y": 0.4, "width": 1.0, "height": 0.55},
+                            },
+                        ],
+                    }
+                ],
+            },
+        ],
+    }
+    edl_path = edit_dir / "edl.json"
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+
+    root = build_fcpxml(edl_path).getroot()
+    assets = root.findall("./resources/asset")
+    projects = root.findall("./library/event/project")
+    second_primary = projects[1].find("./sequence/spine/asset-clip")
+    assert second_primary is not None
+    layers = second_primary.findall("./asset-clip")
+
+    assert len(assets) == 1
+    assert parse_fcpx_time(assets[0].attrib["duration"]) >= Fraction(102, 1)
+    assert second_primary.attrib["name"] == "Gameplay"
+    assert "srcEnable" not in second_primary.attrib
+    assert [layer.attrib["name"] for layer in layers] == ["Facecam"]
 
 
 def test_build_fcpxml_layer_geometry_for_horizontal_source_on_vertical_timeline(tmp_path: Path) -> None:
@@ -381,16 +452,64 @@ def test_build_fcpxml_layer_geometry_for_horizontal_source_on_vertical_timeline(
 
     assert trim is not None
     assert trim.attrib == {
-        "left": "0.000000%",
-        "right": "75.000000%",
-        "top": "32.222222%",
-        "bottom": "32.222222%",
+        "right": "37.5",
+        "top": "32.222222",
+        "bottom": "32.222222",
     }
-    assert conform is not None
-    assert conform.attrib["type"] == "none"
+    assert conform is None
     assert transform is not None
-    assert transform.attrib["position"] == "1620.000 528.000"
-    assert transform.attrib["scale"] == "2.250000 2.250000"
+    assert transform.attrib["anchor"] == "0 0"
+    assert transform.attrib["position"] == "84.375 27.500"
+    assert transform.attrib["scale"] == "4.000000 4.000000"
+
+
+def test_build_fcpxml_keeps_horizontal_crop_compensation_but_places_y_by_destination(tmp_path: Path) -> None:
+    edl_path, edl = write_fcpx_edl(
+        tmp_path,
+        ranges=[
+            {
+                "source": "A001",
+                "source_start": 325.333333,
+                "source_end": 338.866666,
+                "record_start": 0.0,
+                "visual_layers": [
+                    {
+                        "name": "Facecam",
+                        "source_rect": {"x": 0, "y": 610, "width": 700, "height": 500},
+                        "dest_rect": {"x": 0, "y": 0, "width": 1080, "height": 850},
+                    },
+                    {
+                        "name": "Screen",
+                        "source_rect": {"x": 0, "y": 0, "width": 2560, "height": 1440},
+                        "dest_rect": {"x": 0, "y": 1020, "width": 1080, "height": 760},
+                    },
+                ],
+            }
+        ],
+    )
+    edl["timelines"][0]["resolution"] = [1080, 1920]
+    (tmp_path / "edit" / "media_index.json").write_text(
+        json.dumps({"media": [{"path": "raw/clip.mp4", "duration": 705.733333, "width": 2560, "height": 1440}]}),
+        encoding="utf-8",
+    )
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+
+    root = build_fcpxml(edl_path).getroot()
+    facecam = root.find("./library/event/project/sequence/spine/asset-clip/asset-clip")
+    assert facecam is not None
+    trim = facecam.find("./adjust-crop/trim-rect")
+    transform = facecam.find("./adjust-transform")
+
+    assert trim is not None
+    assert trim.attrib == {
+        "left": "0.631893",
+        "right": "36.960018",
+        "top": "42.361111",
+        "bottom": "22.916667",
+    }
+    assert transform is not None
+    assert transform.attrib["position"] == "82.344 27.865"
+    assert transform.attrib["scale"] == "4.029630 4.029630"
 
 
 def test_build_fcpxml_rejects_range_that_rounds_to_zero_frames(tmp_path: Path) -> None:

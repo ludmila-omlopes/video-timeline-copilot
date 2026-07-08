@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from types import SimpleNamespace
 
 from helpers.cli import COMMANDS
 from helpers.qa_preview import default_contact_sheet_path, default_report_path, qa_preview
+from helpers.render_fcpxml_preview import _layer_geometry, _trimmed_source_rect
 from helpers.render_preview import _layered_segment_args, _segment_args, preview_path, render_preview
 
 
@@ -52,7 +54,86 @@ def write_transform_coverage_edl(tmp_path: Path) -> Path:
 
 def test_preview_commands_are_registered() -> None:
     assert COMMANDS["render-preview"] == ("helpers.render_preview", "Render an MP4 preview from an EDL")
+    assert COMMANDS["render-fcpxml-preview"] == (
+        "helpers.render_fcpxml_preview",
+        "Render an MP4 preview from an FCPXML file",
+    )
     assert COMMANDS["qa-preview"] == ("helpers.qa_preview", "Run automated QA checks for a preview render")
+
+
+def test_fcpxml_preview_applies_resolve_horizontal_crop_factor() -> None:
+    clip = ET.fromstring(
+        """
+        <asset-clip>
+          <adjust-crop mode="trim">
+            <trim-rect top="0.791605" right="45.0833" bottom="78.7916" />
+          </adjust-crop>
+        </asset-clip>
+        """
+    )
+
+    crop_x, crop_y, crop_w, crop_h = _trimmed_source_rect(
+        clip,
+        source_width=2560,
+        source_height=1440,
+        timeline_width=1080,
+        timeline_height=1920,
+        resolve_crop_x_factor=2.0,
+    )
+
+    assert crop_x == 0
+    assert crop_y == 11
+    assert crop_w == 252
+    assert crop_h == 294
+
+
+def test_fcpxml_preview_treats_transform_y_as_resolve_y_up() -> None:
+    clip = ET.fromstring(
+        """
+        <asset-clip>
+          <adjust-transform position="0 25" scale="1 1" />
+        </asset-clip>
+        """
+    )
+
+    overlay_x, overlay_y, display_w, display_h = _layer_geometry(
+        clip,
+        crop_x=0,
+        crop_width=1080,
+        crop_height=960,
+        source_width=1080,
+        source_height=1920,
+        timeline_width=1080,
+        timeline_height=1920,
+    )
+
+    assert (overlay_x, overlay_y, display_w, display_h) == (0, 0, 1080, 960)
+
+
+def test_fcpxml_preview_applies_horizontal_source_center_compensation() -> None:
+    clip = ET.fromstring(
+        """
+        <asset-clip>
+          <adjust-transform position="82.344 27.865" scale="4.02963 4.02963" />
+        </asset-clip>
+        """
+    )
+
+    overlay_x, overlay_y, display_w, display_h = _layer_geometry(
+        clip,
+        crop_x=32,
+        crop_width=635,
+        crop_height=500,
+        source_width=2560,
+        source_height=1440,
+        timeline_width=1080,
+        timeline_height=1920,
+    )
+
+    assert abs(overlay_x) <= 2
+    assert overlay_y == 0
+    assert display_w == 1080
+    assert display_h == 850
 
 
 def test_preview_path_sanitizes_project_and_timeline_names(tmp_path: Path) -> None:
