@@ -173,3 +173,36 @@ def test_create_timelines_rejects_retimed_ranges_before_resolve_import(tmp_path:
 
     with pytest.raises(RuntimeError, match="does not support retimed ranges"):
         create_timelines_from_edl(FakeProject(FakeMediaPool(FakeTimeline(FakeTimelineItem()))), FakeResolve(), edl, tmp_path)
+
+
+def test_create_timelines_rejects_visual_layers_before_resolve_import(tmp_path: Path) -> None:
+    source = tmp_path / "raw" / "clip.mp4"
+    source.parent.mkdir()
+    source.write_bytes(b"")
+    edl = {
+        "fps": 30,
+        "timelines": [
+            {
+                "name": "Main",
+                "resolution": [1080, 1920],
+                "sources": {"A001": "raw/clip.mp4"},
+                "ranges": [
+                    {
+                        "source": "A001",
+                        "source_start": 0.0,
+                        "source_end": 2.0,
+                        "record_start": 0.0,
+                        "visual_layers": [
+                            {
+                                "source_rect": {"x": 0, "y": 0, "width": 1, "height": 0.4},
+                                "dest_rect": {"x": 0, "y": 0, "width": 1, "height": 0.4},
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+
+    with pytest.raises(RuntimeError, match="visual_layers"):
+        create_timelines_from_edl(FakeProject(FakeMediaPool(FakeTimeline(FakeTimelineItem()))), FakeResolve(), edl, tmp_path)

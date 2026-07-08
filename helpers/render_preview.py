@@ -8,9 +8,9 @@ from pathlib import Path
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
 from helpers.export_fcpxml import timeline_duration
-from helpers.media_tools import find_ffmpeg, stream_types
+from helpers.media_tools import find_ffmpeg, stream_types, video_dimensions
 from helpers.timing import range_source_duration, range_timeline_duration
-from helpers.transforms import resolve_transform
+from helpers.transforms import Rect, resolve_transform, visual_layer_dest_rect, visual_layer_source_rect
 from helpers.validate_edl import validate
 
 
@@ -225,6 +225,147 @@ def _concat_args(segment_paths: list[Path], list_path: Path, out_path: Path) -> 
     ]
 
 
+def _rounded_rect(rect: Rect) -> tuple[int, int, int, int]:
+    return (
+        max(0, int(round(rect.x))),
+        max(0, int(round(rect.y))),
+        max(1, int(round(rect.width))),
+        max(1, int(round(rect.height))),
+    )
+
+
+def _visual_layer_timing(item: dict, layer: dict) -> tuple[float, float, float]:
+    start = float(layer.get("source_start", item["source_start"]))
+    end = float(layer.get("source_end", item["source_end"]))
+    source_duration = end - start
+    if source_duration <= 0:
+        raise ValueError("visual layer source_end must be greater than source_start")
+    return start, end, source_duration
+
+
+def _layered_segment_args(
+    source: Path,
+    start: float,
+    source_duration: float,
+    record_duration: float,
+    width: int,
+    height: int,
+    fps: float,
+    out_path: Path,
+    types: set[str],
+    item: dict,
+    source_paths: dict[str, Path],
+    source_dimensions: dict[Path, tuple[int, int]],
+) -> list[str]:
+    visual_layers = item.get("visual_layers") or []
+    if not visual_layers:
+        return _segment_args(
+            source,
+            start,
+            source_duration,
+            record_duration,
+            width,
+            height,
+            fps,
+            out_path,
+            types,
+            item.get("transform"),
+        )
+
+    media_inputs: list[str] = []
+    filter_parts: list[str] = []
+    input_index = 0
+
+    if "audio" in types:
+        audio_index = input_index
+        media_inputs.extend(["-ss", f"{start:.6f}", "-t", f"{source_duration:.6f}", "-i", str(source)])
+        input_index += 1
+        audio_filter = _audio_filter(source_duration / record_duration)
+    else:
+        audio_index = input_index
+        media_inputs.extend(
+            [
+                "-f",
+                "lavfi",
+                "-i",
+                f"anullsrc=channel_layout=stereo:sample_rate=48000:d={record_duration:.6f}",
+            ]
+        )
+        input_index += 1
+        audio_filter = "aresample=48000,apad"
+
+    layer_inputs = []
+    for layer_index, layer in enumerate(visual_layers):
+        layer_source_id = str(layer.get("source", item["source"]))
+        layer_source = source_paths[layer_source_id]
+        layer_start, _, layer_source_duration = _visual_layer_timing(item, layer)
+        layer_inputs.append((layer_index, input_index, layer, layer_source, layer_source_duration))
+        media_inputs.extend(
+            ["-ss", f"{layer_start:.6f}", "-t", f"{layer_source_duration:.6f}", "-i", str(layer_source)]
+        )
+        input_index += 1
+
+    canvas_index = input_index
+    media_inputs.extend(["-f", "lavfi", "-i", f"color=c=black:s={width}x{height}:r={fps}:d={record_duration:.6f}"])
+
+    filter_parts.append(f"[{canvas_index}:v]format=rgba[base0]")
+    overlay_base = "base0"
+    for layer_index, input_idx, layer, layer_source, layer_source_duration in layer_inputs:
+        source_width, source_height = source_dimensions.get(layer_source, (width, height))
+        source_rect = visual_layer_source_rect(layer, source_width, source_height)
+        dest_rect = visual_layer_dest_rect(layer, width, height)
+        crop_x, crop_y, crop_w, crop_h = _rounded_rect(source_rect)
+        dest_x, dest_y, dest_w, dest_h = _rounded_rect(dest_rect)
+        timeline_scale = record_duration / layer_source_duration
+        layer_label = f"layer{layer_index}"
+        filter_parts.append(
+            (
+                f"[{input_idx}:v]setpts={timeline_scale:.12g}*PTS,fps={fps},"
+                f"crop={crop_w}:{crop_h}:{crop_x}:{crop_y},"
+                f"scale={dest_w}:{dest_h}:force_original_aspect_ratio=increase,"
+                f"crop={dest_w}:{dest_h},setsar=1,format=rgba[{layer_label}]"
+            )
+        )
+        next_base = f"base{layer_index + 1}"
+        filter_parts.append(
+            f"[{overlay_base}][{layer_label}]overlay=x={dest_x}:y={dest_y}:shortest=0:eof_action=pass[{next_base}]"
+        )
+        overlay_base = next_base
+
+    filter_parts.append(f"[{overlay_base}]format=yuv420p[vout]")
+    filter_parts.append(f"[{audio_index}:a]{audio_filter}[aout]")
+
+    return [
+        find_ffmpeg(),
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        *media_inputs,
+        "-filter_complex",
+        ";".join(filter_parts),
+        "-map",
+        "[vout]",
+        "-map",
+        "[aout]",
+        "-t",
+        f"{record_duration:.6f}",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "23",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-movflags",
+        "+faststart",
+        str(out_path),
+    ]
+
+
 def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: str | None = None) -> Path:
     validation_errors = validate(edl_path)
     if validation_errors:
@@ -248,6 +389,11 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
         source_id: ensure_within(resolve_relative(source_path, root), root)
         for source_id, source_path in timeline.get("sources", {}).items()
     }
+    source_dimensions = {}
+    for source_path in source_paths.values():
+        dimensions = video_dimensions(source_path)
+        if dimensions:
+            source_dimensions[source_path] = dimensions
     ranges = sorted(timeline.get("ranges") or [], key=lambda item: float(item.get("record_start", 0.0)))
     if not ranges:
         raise ValueError("timeline has no ranges")
@@ -277,8 +423,23 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
                 types = stream_types(source)
                 stream_types_by_source[source_id] = types
             segment_path = tmp_dir / f"{index:04d}_clip.mp4"
-            subprocess.run(
-                _segment_args(
+            args = (
+                _layered_segment_args(
+                    source,
+                    source_start,
+                    source_duration,
+                    duration,
+                    width,
+                    height,
+                    fps,
+                    segment_path,
+                    types,
+                    item,
+                    source_paths,
+                    source_dimensions,
+                )
+                if item.get("visual_layers")
+                else _segment_args(
                     source,
                     source_start,
                     source_duration,
@@ -289,9 +450,9 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
                     segment_path,
                     types,
                     item.get("transform"),
-                ),
-                check=True,
+                )
             )
+            subprocess.run(args, check=True)
             segments.append(segment_path)
             cursor = max(cursor, record_start + duration)
 

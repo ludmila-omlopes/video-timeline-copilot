@@ -57,3 +57,17 @@ def test_stream_types_and_media_duration_parse_ffprobe_payload(monkeypatch) -> N
 
     assert media_tools.stream_types(Path("clip.mp4")) == {"video", "audio"}
     assert media_tools.media_duration(Path("clip.mp4")) == 12.5
+    assert media_tools.video_dimensions(Path("clip.mp4")) is None
+
+
+def test_video_dimensions_reads_first_video_stream(monkeypatch) -> None:
+    payload = {
+        "streams": [
+            {"codec_type": "audio"},
+            {"codec_type": "video", "width": 1080, "height": 1920},
+        ],
+        "format": {},
+    }
+    monkeypatch.setattr("helpers.media_tools.ffprobe_json", lambda path: payload)
+
+    assert media_tools.video_dimensions(Path("clip.mp4")) == (1080, 1920)

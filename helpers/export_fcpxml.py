@@ -7,7 +7,14 @@ import xml.etree.ElementTree as ET
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
 from helpers.timing import range_effective_speed, range_playback_speed, range_source_duration, range_timeline_duration
-from helpers.transforms import resolve_transform
+from helpers.transforms import (
+    aspect_fill_crop_rect,
+    layer_transform,
+    rect_trim_percentages,
+    resolve_transform,
+    visual_layer_dest_rect,
+    visual_layer_source_rect,
+)
 from helpers.validate_edl import validate
 
 
@@ -88,6 +95,58 @@ def add_time_map(clip: ET.Element, item: dict, fps: float) -> None:
     )
 
 
+def visual_layer_timing(item: dict, layer: dict) -> tuple[float, float, float]:
+    source_start = float(layer.get("source_start", item["source_start"]))
+    source_end = float(layer.get("source_end", item["source_end"]))
+    duration = source_end - source_start
+    if duration <= 0:
+        raise ValueError("visual layer source_end must be greater than source_start")
+    return source_start, source_end, duration
+
+
+def add_visual_adjustments(
+    clip: ET.Element,
+    layer: dict,
+    *,
+    source_width: int,
+    source_height: int,
+    timeline_width: int,
+    timeline_height: int,
+) -> None:
+    source_rect = visual_layer_source_rect(layer, source_width, source_height)
+    dest_rect = visual_layer_dest_rect(layer, timeline_width, timeline_height)
+    crop_rect = aspect_fill_crop_rect(source_rect, dest_rect)
+    trim = rect_trim_percentages(crop_rect, source_width, source_height)
+    crop = ET.SubElement(clip, "adjust-crop", {"mode": "trim"})
+    ET.SubElement(
+        crop,
+        "trim-rect",
+        {
+            "left": f"{trim['left']:.6f}%",
+            "right": f"{trim['right']:.6f}%",
+            "top": f"{trim['top']:.6f}%",
+            "bottom": f"{trim['bottom']:.6f}%",
+        },
+    )
+    ET.SubElement(clip, "adjust-conform", {"type": "none"})
+    position_x, position_y, scale = layer_transform(
+        crop_rect,
+        dest_rect,
+        source_width,
+        source_height,
+        timeline_width,
+        timeline_height,
+    )
+    ET.SubElement(
+        clip,
+        "adjust-transform",
+        {
+            "position": f"{position_x:.3f} {position_y:.3f}",
+            "scale": f"{scale:.6f} {scale:.6f}",
+        },
+    )
+
+
 def add_asset(
     resources: ET.Element,
     asset_id: str,
@@ -133,8 +192,7 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
     formats: dict[tuple[int, int], str] = {}
     assets: dict[str, tuple[str, Path]] = {}
 
-    for timeline in edl["timelines"]:
-        width, height = timeline["resolution"]
+    def ensure_format(width: int, height: int) -> str:
         format_key = (int(width), int(height))
         if format_key not in formats:
             format_id = f"r{len(formats) + 1}"
@@ -150,24 +208,48 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                     "height": str(height),
                 },
             )
+        return formats[format_key]
 
+    for timeline in edl["timelines"]:
+        width, height = timeline["resolution"]
+        sequence_format = ensure_format(int(width), int(height))
         for source_id, source_path in timeline["sources"].items():
             if source_id in assets:
                 continue
             resolved = ensure_within(resolve_relative(source_path, footage_root), footage_root)
             asset_id = f"a{len(assets) + 1}"
             assets[source_id] = (asset_id, resolved)
-            longest_duration = max(
-                (float(item["source_end"]) for item in timeline["ranges"] if item["source"] == source_id),
-                default=0.0,
-            )
+            media_info = media_by_path.get(resolved)
+            source_ends = []
+            for item in timeline["ranges"]:
+                if item["source"] == source_id:
+                    source_ends.append(float(item["source_end"]))
+                for layer in item.get("visual_layers") or []:
+                    layer_source = layer.get("source", item["source"])
+                    if layer_source == source_id:
+                        source_ends.append(float(layer.get("source_end", item["source_end"])))
+            computed_duration = max(source_ends, default=0.0)
+            try:
+                media_duration = float((media_info or {}).get("duration") or 0.0)
+            except (TypeError, ValueError):
+                media_duration = 0.0
+            declared_duration = media_duration if media_duration > 0 else computed_duration
+            asset_format = sequence_format
+            try:
+                media_width = int((media_info or {}).get("width") or 0)
+                media_height = int((media_info or {}).get("height") or 0)
+            except (TypeError, ValueError):
+                media_width = 0
+                media_height = 0
+            if media_width > 0 and media_height > 0 and (media_width, media_height) != (int(width), int(height)):
+                asset_format = ensure_format(media_width, media_height)
             add_asset(
                 resources,
                 asset_id,
                 resolved,
-                fcpx_time(longest_duration, fps),
-                formats[format_key],
-                media_by_path.get(resolved),
+                fcpx_time(declared_duration, fps),
+                asset_format,
+                media_info,
             )
 
     library = ET.SubElement(fcpxml, "library")
@@ -234,17 +316,52 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                 },
             )
             add_time_map(clip, item, fps)
-            ET.SubElement(clip, "adjust-conform", {"type": "fill"})
-            transform = resolve_transform(item.get("transform"), int(width), int(height))
-            if transform.zoom != 1.0 or transform.pan != 0.0 or transform.tilt != 0.0:
-                ET.SubElement(
-                    clip,
-                    "adjust-transform",
-                    {
-                        "position": f"{transform.pan:.3f} {transform.tilt:.3f}",
-                        "scale": f"{transform.zoom:.3f} {transform.zoom:.3f}",
-                    },
-                )
+            visual_layers = item.get("visual_layers") or []
+            if visual_layers:
+                clip.set("srcEnable", "audio")
+                for layer_index, layer in enumerate(visual_layers):
+                    layer_source = str(layer.get("source", item["source"]))
+                    layer_asset_id, layer_path = assets[layer_source]
+                    layer_source_start, _, _ = visual_layer_timing(item, layer)
+                    layer_clip = ET.SubElement(
+                        clip,
+                        "asset-clip",
+                        {
+                            "name": str(layer.get("name") or layer.get("label") or f"Layer {layer_index + 1}"),
+                            "ref": layer_asset_id,
+                            "lane": str(int(layer.get("lane", layer.get("track", layer_index + 1)))),
+                            "offset": fcpx_time(source_start, fps),
+                            "start": fcpx_time(layer_source_start, fps),
+                            "duration": fcpx_time_from_frames(duration_frames, fps),
+                            "format": formats[(int(width), int(height))],
+                            "srcEnable": "video",
+                            "videoRole": "video",
+                        },
+                    )
+                    layer_media = media_by_path.get(layer_path.resolve(), {})
+                    source_width = int(layer.get("source_width", layer_media.get("width") or width))
+                    source_height = int(layer.get("source_height", layer_media.get("height") or height))
+                    add_time_map(layer_clip, {**item, **layer, "record_duration": duration}, fps)
+                    add_visual_adjustments(
+                        layer_clip,
+                        layer,
+                        source_width=source_width,
+                        source_height=source_height,
+                        timeline_width=int(width),
+                        timeline_height=int(height),
+                    )
+            else:
+                ET.SubElement(clip, "adjust-conform", {"type": "fill"})
+                transform = resolve_transform(item.get("transform"), int(width), int(height))
+                if transform.zoom != 1.0 or transform.pan != 0.0 or transform.tilt != 0.0:
+                    ET.SubElement(
+                        clip,
+                        "adjust-transform",
+                        {
+                            "position": f"{transform.pan:.3f} {transform.tilt:.3f}",
+                            "scale": f"{transform.zoom:.3f} {transform.zoom:.3f}",
+                        },
+                    )
             cursor = max(cursor, record_start + duration)
 
     ET.indent(fcpxml, space="  ")

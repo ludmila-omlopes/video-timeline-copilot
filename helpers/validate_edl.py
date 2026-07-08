@@ -15,6 +15,31 @@ PARTIAL_SPAN_TOLERANCE_SECONDS = 0.035
 MAX_WARNING_TEXT_CHARS = 96
 
 
+def _rect_payload_size(payload: dict) -> tuple[float, float] | None:
+    if {"left", "top", "right", "bottom"}.issubset(payload):
+        return float(payload["right"]) - float(payload["left"]), float(payload["bottom"]) - float(payload["top"])
+    width = payload.get("width", payload.get("w"))
+    height = payload.get("height", payload.get("h"))
+    if width is None or height is None:
+        return None
+    return float(width), float(height)
+
+
+def _validate_rect_payload(payload: object, prefix: str) -> list[str]:
+    errors = []
+    if not isinstance(payload, dict):
+        return [f"{prefix} must be an object"]
+    try:
+        size = _rect_payload_size(payload)
+    except (TypeError, ValueError):
+        return [f"{prefix} values must be numeric"]
+    if size is None:
+        errors.append(f"{prefix} must include x/y/width/height or left/top/right/bottom")
+    elif size[0] <= 0 or size[1] <= 0:
+        errors.append(f"{prefix} width and height must be greater than 0")
+    return errors
+
+
 def _coerce_word(word: dict) -> dict | None:
     start = word.get("start")
     end = word.get("end")
@@ -322,6 +347,40 @@ def validate(edl_path: Path) -> list[str]:
                 errors.append(f"{item_prefix}.record_duration must be greater than 0")
             if float(item.get("record_start", 0)) < 0:
                 errors.append(f"{item_prefix}.record_start must be >= 0")
+            visual_layers = item.get("visual_layers")
+            if visual_layers is not None:
+                if not isinstance(visual_layers, list) or not visual_layers:
+                    errors.append(f"{item_prefix}.visual_layers must be a non-empty list")
+                else:
+                    seen_lanes: set[int] = set()
+                    for layer_index, layer in enumerate(visual_layers):
+                        layer_prefix = f"{item_prefix}.visual_layers[{layer_index}]"
+                        if not isinstance(layer, dict):
+                            errors.append(f"{layer_prefix} must be an object")
+                            continue
+                        layer_source = layer.get("source", item.get("source"))
+                        if layer_source not in sources:
+                            errors.append(f"{layer_prefix}.source must reference a known source")
+                        if layer.get("source_rect") is not None:
+                            errors.extend(_validate_rect_payload(layer["source_rect"], f"{layer_prefix}.source_rect"))
+                        if layer.get("crop") is not None:
+                            errors.extend(_validate_rect_payload(layer["crop"], f"{layer_prefix}.crop"))
+                        if layer.get("dest_rect") is None:
+                            errors.append(f"{layer_prefix}.dest_rect is required")
+                        else:
+                            errors.extend(_validate_rect_payload(layer["dest_rect"], f"{layer_prefix}.dest_rect"))
+                        lane_value = layer.get("lane", layer.get("track", layer_index + 1))
+                        try:
+                            lane_float = float(lane_value)
+                            lane = int(lane_float)
+                            if lane < 1 or lane != lane_float:
+                                raise ValueError
+                        except (TypeError, ValueError):
+                            errors.append(f"{layer_prefix}.lane must be a positive integer")
+                            continue
+                        if lane in seen_lanes:
+                            errors.append(f"{layer_prefix}.lane duplicates lane {lane} in the same range")
+                        seen_lanes.add(lane)
         if fps > 0 and not any(error.startswith(prefix) for error in errors):
             timing_issues = timeline_timing_issues(timeline, fps, min_clip_duration)
             for gap in timing_issues["gaps"]:

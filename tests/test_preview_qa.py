@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 from helpers.cli import COMMANDS
 from helpers.qa_preview import default_contact_sheet_path, default_report_path, qa_preview
-from helpers.render_preview import _segment_args, preview_path, render_preview
+from helpers.render_preview import _layered_segment_args, _segment_args, preview_path, render_preview
 
 
 def write_preview_edl(tmp_path: Path) -> Path:
@@ -118,6 +118,55 @@ def test_segment_args_apply_speed_to_audio_and_video(tmp_path: Path, monkeypatch
     assert args[args.index("-af") + 1].endswith("apad")
 
 
+def test_layered_segment_args_builds_crop_overlay_filter_graph(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("helpers.render_preview.find_ffmpeg", lambda: "ffmpeg")
+    source = tmp_path / "raw" / "clip.mp4"
+    out = tmp_path / "out.mp4"
+    item = {
+        "source": "A001",
+        "source_start": 10.0,
+        "source_end": 12.0,
+        "visual_layers": [
+            {
+                "name": "Facecam",
+                "source_rect": {"x": 0, "y": 480, "width": 478, "height": 374},
+                "dest_rect": {"x": 0.0, "y": 0.0, "width": 1.0, "height": 0.45},
+            },
+            {
+                "name": "Screen",
+                "source_rect": {"x": 260, "y": 150, "width": 1280, "height": 720},
+                "dest_rect": {"x": 0.0, "y": 0.5, "width": 1.0, "height": 0.45},
+            },
+        ],
+    }
+
+    args = _layered_segment_args(
+        source,
+        10.0,
+        2.0,
+        2.0,
+        1080,
+        1920,
+        30.0,
+        out,
+        {"video", "audio"},
+        item,
+        {"A001": source},
+        {source: (1912, 1070)},
+    )
+    filter_graph = args[args.index("-filter_complex") + 1]
+
+    assert "-vf" not in args
+    assert args.count("-i") == 4
+    assert "color=c=black:s=1080x1920:r=30.0:d=2.000000" in args
+    assert "crop=478:374:0:480" in filter_graph
+    assert "crop=1280:720:260:150" in filter_graph
+    assert "scale=1080:864" in filter_graph
+    assert "overlay=x=0:y=0" in filter_graph
+    assert "overlay=x=0:y=960" in filter_graph
+    assert args[args.index("-map") + 1] == "[vout]"
+
+
 def test_render_preview_probes_each_source_once(tmp_path: Path, monkeypatch) -> None:
     raw_dir = tmp_path / "raw"
     edit_dir = tmp_path / "edit"
@@ -160,12 +209,14 @@ def test_render_preview_probes_each_source_once(tmp_path: Path, monkeypatch) -> 
 
     monkeypatch.setattr("helpers.render_preview.find_ffmpeg", lambda: "ffmpeg")
     monkeypatch.setattr("helpers.render_preview.stream_types", fake_stream_types)
+    monkeypatch.setattr("helpers.render_preview.video_dimensions", lambda path: None)
     monkeypatch.setattr("helpers.render_preview.subprocess.run", fake_run)
 
     render_preview(edl_path)
 
     assert len(probed_sources) == 1
     assert len(subprocess_calls) == 4
+
 
 def test_qa_preview_writes_report_without_external_probe(tmp_path: Path, monkeypatch) -> None:
     edl_path = write_preview_edl(tmp_path)

@@ -203,6 +203,196 @@ def test_build_fcpxml_exports_gameplay_screen_preset_transform(tmp_path: Path) -
     assert transform.attrib["scale"] == "1.200 1.200"
 
 
+def test_build_fcpxml_exports_visual_layers_as_connected_video_clips(tmp_path: Path) -> None:
+    edl_path, edl = write_fcpx_edl(
+        tmp_path,
+        ranges=[
+            {
+                "source": "A001",
+                "source_start": 0.0,
+                "source_end": 2.0,
+                "record_start": 0.0,
+                "visual_layers": [
+                    {
+                        "name": "Facecam",
+                        "source_rect": {"x": 0.0, "y": 0.45, "width": 0.25, "height": 0.35},
+                        "dest_rect": {"x": 0.0, "y": 0.0, "width": 1.0, "height": 0.45},
+                    },
+                    {
+                        "name": "Screen",
+                        "source_rect": {"x": 0.0, "y": 0.0, "width": 0.75, "height": 0.75},
+                        "dest_rect": {"x": 0.0, "y": 0.5, "width": 1.0, "height": 0.45},
+                    },
+                ],
+            }
+        ],
+    )
+    edl["timelines"][0]["resolution"] = [1080, 1920]
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+
+    root = build_fcpxml(edl_path).getroot()
+    primary = root.find("./library/event/project/sequence/spine/asset-clip")
+    layers = root.findall("./library/event/project/sequence/spine/asset-clip/asset-clip")
+
+    assert primary is not None
+    assert primary.attrib["srcEnable"] == "audio"
+    assert [layer.attrib["name"] for layer in layers] == ["Facecam", "Screen"]
+    assert [layer.attrib["srcEnable"] for layer in layers] == ["video", "video"]
+    assert [layer.attrib["lane"] for layer in layers] == ["1", "2"]
+    assert [layer.attrib["offset"] for layer in layers] == [primary.attrib["start"], primary.attrib["start"]]
+
+    first_trim = layers[0].find("./adjust-crop/trim-rect")
+    first_conform = layers[0].find("./adjust-conform")
+    first_transform = layers[0].find("./adjust-transform")
+
+    assert first_trim is not None
+    assert first_trim.attrib == {
+        "left": "0.000000%",
+        "right": "75.000000%",
+        "top": "56.875000%",
+        "bottom": "31.875000%",
+    }
+    assert first_conform is not None
+    assert first_conform.attrib["type"] == "none"
+    assert first_transform is not None
+    assert first_transform.attrib["position"] == "1620.000 1488.000"
+    assert first_transform.attrib["scale"] == "4.000000 4.000000"
+
+
+def test_build_fcpxml_anchors_layers_at_parent_start(tmp_path: Path) -> None:
+    edl_path, _ = write_fcpx_edl(
+        tmp_path,
+        ranges=[
+            {
+                "source": "A001",
+                "source_start": 12.0,
+                "source_end": 14.0,
+                "record_start": 0.0,
+                "visual_layers": [
+                    {
+                        "name": "Layer",
+                        "source_rect": {"x": 0, "y": 0, "width": 1, "height": 1},
+                        "dest_rect": {"x": 0, "y": 0, "width": 1, "height": 1},
+                    }
+                ],
+            }
+        ],
+    )
+
+    root = build_fcpxml(edl_path).getroot()
+    primary = root.find("./library/event/project/sequence/spine/asset-clip")
+    layers = root.findall("./library/event/project/sequence/spine/asset-clip/asset-clip")
+
+    assert primary is not None
+    assert primary.attrib["start"] == "12s"
+    assert layers
+    assert [layer.attrib["offset"] for layer in layers] == [primary.attrib["start"]]
+
+
+def test_build_fcpxml_layer_only_source_gets_media_duration_and_format(tmp_path: Path) -> None:
+    edl_path, edl = write_fcpx_edl(
+        tmp_path,
+        ranges=[
+            {
+                "source": "A001",
+                "source_start": 0.0,
+                "source_end": 2.0,
+                "record_start": 0.0,
+                "visual_layers": [
+                    {
+                        "name": "Facecam",
+                        "source": "FACE",
+                        "source_start": 20.0,
+                        "source_end": 22.0,
+                        "source_rect": {"x": 0, "y": 0, "width": 1, "height": 1},
+                        "dest_rect": {"x": 0, "y": 0, "width": 1, "height": 0.5},
+                    }
+                ],
+            }
+        ],
+    )
+    (tmp_path / "raw" / "facecam.mp4").write_bytes(b"")
+    edl["timelines"][0]["resolution"] = [1080, 1920]
+    edl["timelines"][0]["sources"]["FACE"] = "raw/facecam.mp4"
+    (tmp_path / "edit" / "media_index.json").write_text(
+        json.dumps(
+            {
+                "media": [
+                    {
+                        "path": "raw/facecam.mp4",
+                        "duration": 90.0,
+                        "width": 1920,
+                        "height": 1080,
+                        "audio_channels": 2,
+                        "audio_rate": 48000,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+
+    root = build_fcpxml(edl_path).getroot()
+    formats = {fmt.attrib["id"]: fmt for fmt in root.findall("./resources/format")}
+    facecam = next(asset for asset in root.findall("./resources/asset") if asset.attrib["name"] == "facecam")
+    facecam_format = formats[facecam.attrib["format"]]
+
+    assert parse_fcpx_time(facecam.attrib["duration"]) == Fraction(90, 1)
+    assert facecam_format.attrib["width"] == "1920"
+    assert facecam_format.attrib["height"] == "1080"
+
+
+def test_build_fcpxml_layer_geometry_for_horizontal_source_on_vertical_timeline(tmp_path: Path) -> None:
+    edl_path, edl = write_fcpx_edl(
+        tmp_path,
+        ranges=[
+            {
+                "source": "A001",
+                "source_start": 0.0,
+                "source_end": 2.0,
+                "record_start": 0.0,
+                "visual_layers": [
+                    {
+                        "name": "Gameplay",
+                        "source": "GAME",
+                        "source_rect": {"x": 0, "y": 270, "width": 480, "height": 540},
+                        "dest_rect": {"x": 0, "y": 0, "width": 1080, "height": 864},
+                    }
+                ],
+            }
+        ],
+    )
+    (tmp_path / "raw" / "gameplay.mp4").write_bytes(b"")
+    edl["timelines"][0]["resolution"] = [1080, 1920]
+    edl["timelines"][0]["sources"]["GAME"] = "raw/gameplay.mp4"
+    (tmp_path / "edit" / "media_index.json").write_text(
+        json.dumps({"media": [{"path": "raw/gameplay.mp4", "duration": 90.0, "width": 1920, "height": 1080}]}),
+        encoding="utf-8",
+    )
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+
+    root = build_fcpxml(edl_path).getroot()
+    layer = root.find("./library/event/project/sequence/spine/asset-clip/asset-clip")
+    assert layer is not None
+    trim = layer.find("./adjust-crop/trim-rect")
+    conform = layer.find("./adjust-conform")
+    transform = layer.find("./adjust-transform")
+
+    assert trim is not None
+    assert trim.attrib == {
+        "left": "0.000000%",
+        "right": "75.000000%",
+        "top": "32.222222%",
+        "bottom": "32.222222%",
+    }
+    assert conform is not None
+    assert conform.attrib["type"] == "none"
+    assert transform is not None
+    assert transform.attrib["position"] == "1620.000 528.000"
+    assert transform.attrib["scale"] == "2.250000 2.250000"
+
+
 def test_build_fcpxml_rejects_range_that_rounds_to_zero_frames(tmp_path: Path) -> None:
     edl_path, _ = write_fcpx_edl(
         tmp_path,

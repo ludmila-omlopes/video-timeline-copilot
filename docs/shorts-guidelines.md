@@ -49,6 +49,9 @@ of the vertical edit strategy:
   the facecam is the subject.
 - Use `gameplay-screen` for gameplay/screen beats. This crops to the largest
   remaining screen region and avoids showing the facecam again.
+- Use `visual_layers` when the facecam and screen should be visible at the same
+  time in a split vertical layout. Keep one timing/audio range and define a
+  facecam layer plus a screen layer with `source_rect` and `dest_rect`.
 - Use the same measured facecam rectangle for both presets so the screen crop
   excludes exactly the overlay area.
 - Do not use a generic center crop when it leaves the facecam visible in a

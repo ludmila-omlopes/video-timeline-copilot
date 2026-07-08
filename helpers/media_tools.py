@@ -61,3 +61,10 @@ def stream_types(path: Path) -> set[str]:
 def media_duration(path: Path) -> float | None:
     value = ffprobe_json(path).get("format", {}).get("duration")
     return float(value) if value is not None else None
+
+
+def video_dimensions(path: Path) -> tuple[int, int] | None:
+    for stream in ffprobe_json(path).get("streams", []):
+        if stream.get("codec_type") == "video" and stream.get("width") and stream.get("height"):
+            return int(stream["width"]), int(stream["height"])
+    return None

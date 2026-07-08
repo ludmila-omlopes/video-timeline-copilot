@@ -82,6 +82,10 @@ def _rect_from_payload(payload: dict, width: int, height: int) -> Rect:
     return Rect(x, y, max(0.0, rect_width), max(0.0, rect_height))
 
 
+def rect_from_payload(payload: dict, width: int, height: int) -> Rect:
+    return _rect_from_payload(payload, width, height)
+
+
 def _padding_pixels(value: float, width: int, height: int) -> float:
     if 0.0 <= value <= 1.0:
         return value * min(width, height)
@@ -136,6 +140,79 @@ def transform_for_focus_rect(rect: Rect, width: int, height: int) -> ResolvedTra
         tilt=round(tilt, 6),
         minimum_zoom=round(minimum_zoom, 6),
     )
+
+
+def visual_layer_source_rect(layer: dict, width: int, height: int) -> Rect:
+    payload = layer.get("source_rect", layer.get("crop", layer.get("focus_rect")))
+    if not payload:
+        return Rect(0.0, 0.0, float(width), float(height))
+    return _clamped_rect(_rect_from_payload(payload, width, height), width, height)
+
+
+def visual_layer_dest_rect(layer: dict, width: int, height: int) -> Rect:
+    payload = layer.get("dest_rect", layer.get("destination", layer.get("canvas_rect")))
+    if not payload:
+        return Rect(0.0, 0.0, float(width), float(height))
+    return _clamped_rect(_rect_from_payload(payload, width, height), width, height)
+
+
+def rect_trim_percentages(rect: Rect, width: int, height: int) -> dict[str, float]:
+    rect = _clamped_rect(rect, width, height)
+    if width <= 0 or height <= 0:
+        return {"left": 0.0, "right": 0.0, "top": 0.0, "bottom": 0.0}
+    return {
+        "left": 100.0 * rect.x / width,
+        "right": 100.0 * max(0.0, width - rect.right) / width,
+        "top": 100.0 * rect.y / height,
+        "bottom": 100.0 * max(0.0, height - rect.bottom) / height,
+    }
+
+
+def aspect_fill_crop_rect(source_rect: Rect, dest_rect: Rect) -> Rect:
+    """Largest centered sub-rect of source_rect with dest_rect's aspect ratio."""
+    if source_rect.width <= 0 or source_rect.height <= 0 or dest_rect.width <= 0 or dest_rect.height <= 0:
+        return source_rect
+
+    source_aspect = source_rect.width / source_rect.height
+    dest_aspect = dest_rect.width / dest_rect.height
+    if abs(source_aspect - dest_aspect) <= 1e-9:
+        return source_rect
+
+    if source_aspect > dest_aspect:
+        width = source_rect.height * dest_aspect
+        x = source_rect.x + (source_rect.width - width) / 2.0
+        return Rect(x, source_rect.y, width, source_rect.height)
+
+    height = source_rect.width / dest_aspect
+    y = source_rect.y + (source_rect.height - height) / 2.0
+    return Rect(source_rect.x, y, source_rect.width, height)
+
+
+def layer_transform(
+    crop_rect: Rect,
+    dest_rect: Rect,
+    source_width: int,
+    source_height: int,
+    timeline_width: int,
+    timeline_height: int,
+) -> tuple[float, float, float]:
+    """Return position and uniform scale for a conform=none visual layer."""
+    if (
+        crop_rect.width <= 0
+        or crop_rect.height <= 0
+        or dest_rect.width <= 0
+        or dest_rect.height <= 0
+        or source_width <= 0
+        or source_height <= 0
+        or timeline_width <= 0
+        or timeline_height <= 0
+    ):
+        return 0.0, 0.0, 1.0
+
+    scale = dest_rect.width / crop_rect.width
+    position_x = (dest_rect.center_x - timeline_width / 2.0) - scale * (crop_rect.center_x - source_width / 2.0)
+    position_y = (timeline_height / 2.0 - dest_rect.center_y) - scale * (source_height / 2.0 - crop_rect.center_y)
+    return position_x, position_y, scale
 
 
 def resolve_transform(transform: dict | None, width: int, height: int) -> ResolvedTransform:
