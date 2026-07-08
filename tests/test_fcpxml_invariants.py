@@ -151,12 +151,14 @@ def test_asset_durations_cover_all_referenced_source_ends(tmp_path: Path) -> Non
         assert parse_fcpx_time(asset.attrib["duration"]) >= source_end_by_stem[asset.attrib["name"]]
 
 
-def test_primary_clips_with_layers_are_audio_only(tmp_path: Path) -> None:
+def test_primary_clips_with_layers_keep_one_visible_primary(tmp_path: Path) -> None:
     root, _ = built_tree(tmp_path)
 
     for clip in root.findall("./library/event/project/sequence/spine/asset-clip"):
         layers = clip.findall("./asset-clip")
         if not layers:
             continue
-        assert clip.attrib["srcEnable"] == "audio"
-        assert [layer.attrib["srcEnable"] for layer in layers] == ["video", "video"]
+        assert clip.attrib.get("srcEnable") != "audio"
+        assert clip.find("./adjust-crop") is not None
+        assert clip.find("./adjust-transform") is not None
+        assert [layer.attrib["srcEnable"] for layer in layers] == ["video"]

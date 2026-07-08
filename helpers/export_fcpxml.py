@@ -3,13 +3,13 @@ from __future__ import annotations
 import argparse
 from fractions import Fraction
 from pathlib import Path
+from urllib.parse import unquote, urlparse
 import xml.etree.ElementTree as ET
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
 from helpers.timing import range_effective_speed, range_playback_speed, range_source_duration, range_timeline_duration
 from helpers.transforms import (
     aspect_fill_crop_rect,
-    layer_transform,
     rect_trim_percentages,
     resolve_transform,
     visual_layer_dest_rect,
@@ -20,6 +20,7 @@ from helpers.validate_edl import validate
 
 FCPXML_VERSION = "1.13"
 RANGE_ID_METADATA_KEY = "com.video-timeline-copilot.range-id"
+DEFAULT_RESOLVE_CROP_X_FACTOR = 2.0
 
 
 def range_id_for(timeline_index: int, range_index: int, item: dict) -> str:
@@ -104,6 +105,71 @@ def visual_layer_timing(item: dict, layer: dict) -> tuple[float, float, float]:
     return source_start, source_end, duration
 
 
+def visual_layer_source_id(item: dict, layer: dict) -> str:
+    return str(layer.get("source", item["source"]))
+
+
+def primary_visual_layer_index(item: dict) -> int | None:
+    layers = item.get("visual_layers") or []
+    candidates = []
+    for index, layer in enumerate(layers):
+        if visual_layer_source_id(item, layer) != str(item["source"]):
+            continue
+        layer_start, layer_end, _ = visual_layer_timing(item, layer)
+        if abs(layer_start - float(item["source_start"])) > 1e-6 or abs(layer_end - float(item["source_end"])) > 1e-6:
+            continue
+        name = str(layer.get("name", layer.get("label", ""))).lower()
+        dest = layer.get("dest_rect", layer.get("destination", layer.get("canvas_rect", {}))) or {}
+        try:
+            dest_area = float(dest.get("width", 0.0)) * float(dest.get("height", 0.0))
+        except (TypeError, ValueError):
+            dest_area = 0.0
+        name_priority = 1 if any(token in name for token in ("gameplay", "screen", "main", "base")) else 0
+        candidates.append((name_priority, dest_area, index))
+    if not candidates:
+        return None
+    return max(candidates)[2]
+
+
+def resolve_fit_scale(source_width: int, source_height: int, timeline_width: int, timeline_height: int) -> float:
+    if source_width <= 0 or source_height <= 0 or timeline_width <= 0 or timeline_height <= 0:
+        return 1.0
+    return min(timeline_width / source_width, timeline_height / source_height)
+
+
+def resolve_layer_transform(
+    crop_rect,
+    dest_rect,
+    source_width: int,
+    source_height: int,
+    timeline_width: int,
+    timeline_height: int,
+) -> tuple[float, float, float]:
+    if (
+        crop_rect.width <= 0
+        or crop_rect.height <= 0
+        or dest_rect.width <= 0
+        or dest_rect.height <= 0
+        or source_width <= 0
+        or source_height <= 0
+        or timeline_width <= 0
+        or timeline_height <= 0
+    ):
+        return 0.0, 0.0, 1.0
+
+    desired_scale = dest_rect.width / crop_rect.width
+    fit_scale = resolve_fit_scale(source_width, source_height, timeline_width, timeline_height)
+    if fit_scale <= 0:
+        return 0.0, 0.0, desired_scale
+    resolve_position_scale = timeline_height / 100.0 if timeline_height > 0 else 1.0
+
+    position_x = (dest_rect.center_x - timeline_width / 2.0) - desired_scale * (
+        crop_rect.center_x - source_width / 2.0
+    )
+    position_y = timeline_height / 2.0 - dest_rect.center_y
+    return position_x / resolve_position_scale, position_y / resolve_position_scale, desired_scale / fit_scale
+
+
 def add_visual_adjustments(
     clip: ET.Element,
     layer: dict,
@@ -112,24 +178,24 @@ def add_visual_adjustments(
     source_height: int,
     timeline_width: int,
     timeline_height: int,
+    resolve_crop_x_factor: float = DEFAULT_RESOLVE_CROP_X_FACTOR,
 ) -> None:
     source_rect = visual_layer_source_rect(layer, source_width, source_height)
     dest_rect = visual_layer_dest_rect(layer, timeline_width, timeline_height)
     crop_rect = aspect_fill_crop_rect(source_rect, dest_rect)
     trim = rect_trim_percentages(crop_rect, source_width, source_height)
     crop = ET.SubElement(clip, "adjust-crop", {"mode": "trim"})
-    ET.SubElement(
-        crop,
-        "trim-rect",
-        {
-            "left": f"{trim['left']:.6f}%",
-            "right": f"{trim['right']:.6f}%",
-            "top": f"{trim['top']:.6f}%",
-            "bottom": f"{trim['bottom']:.6f}%",
-        },
-    )
-    ET.SubElement(clip, "adjust-conform", {"type": "none"})
-    position_x, position_y, scale = layer_transform(
+    trim_attrs = {}
+    horizontal_factor = resolve_crop_x_factor if resolve_crop_x_factor > 0 else 1.0
+    for key in ("left", "right"):
+        value = trim[key] / horizontal_factor
+        if abs(value) > 1e-6:
+            trim_attrs[key] = f"{value:.6f}".rstrip("0").rstrip(".")
+    for key in ("top", "bottom"):
+        if abs(trim[key]) > 1e-6:
+            trim_attrs[key] = f"{trim[key]:.6f}".rstrip("0").rstrip(".")
+    ET.SubElement(crop, "trim-rect", trim_attrs)
+    position_x, position_y, scale = resolve_layer_transform(
         crop_rect,
         dest_rect,
         source_width,
@@ -141,6 +207,7 @@ def add_visual_adjustments(
         clip,
         "adjust-transform",
         {
+            "anchor": "0 0",
             "position": f"{position_x:.3f} {position_y:.3f}",
             "scale": f"{scale:.6f} {scale:.6f}",
         },
@@ -176,7 +243,7 @@ def add_asset(
     ET.SubElement(asset, "media-rep", {"kind": "original-media", "src": file_url(path)})
 
 
-def build_fcpxml(edl_path: Path) -> ET.ElementTree:
+def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOLVE_CROP_X_FACTOR) -> ET.ElementTree:
     validation_errors = validate(edl_path)
     if validation_errors:
         raise ValueError("EDL validation failed: " + "; ".join(validation_errors))
@@ -190,7 +257,9 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
     resources = ET.SubElement(fcpxml, "resources")
 
     formats: dict[tuple[int, int], str] = {}
-    assets: dict[str, tuple[str, Path]] = {}
+    asset_records: dict[Path, dict] = {}
+    timeline_assets: dict[tuple[int, str], tuple[str, Path]] = {}
+    asset_formats: dict[Path, str] = {}
 
     def ensure_format(width: int, height: int) -> str:
         format_key = (int(width), int(height))
@@ -210,47 +279,62 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
             )
         return formats[format_key]
 
-    for timeline in edl["timelines"]:
+    for timeline_index, timeline in enumerate(edl["timelines"]):
         width, height = timeline["resolution"]
         sequence_format = ensure_format(int(width), int(height))
         for source_id, source_path in timeline["sources"].items():
-            if source_id in assets:
-                continue
             resolved = ensure_within(resolve_relative(source_path, footage_root), footage_root)
-            asset_id = f"a{len(assets) + 1}"
-            assets[source_id] = (asset_id, resolved)
-            media_info = media_by_path.get(resolved)
-            source_ends = []
-            for item in timeline["ranges"]:
-                if item["source"] == source_id:
-                    source_ends.append(float(item["source_end"]))
-                for layer in item.get("visual_layers") or []:
-                    layer_source = layer.get("source", item["source"])
-                    if layer_source == source_id:
-                        source_ends.append(float(layer.get("source_end", item["source_end"])))
-            computed_duration = max(source_ends, default=0.0)
-            try:
-                media_duration = float((media_info or {}).get("duration") or 0.0)
-            except (TypeError, ValueError):
-                media_duration = 0.0
-            declared_duration = media_duration if media_duration > 0 else computed_duration
-            asset_format = sequence_format
-            try:
-                media_width = int((media_info or {}).get("width") or 0)
-                media_height = int((media_info or {}).get("height") or 0)
-            except (TypeError, ValueError):
-                media_width = 0
-                media_height = 0
-            if media_width > 0 and media_height > 0 and (media_width, media_height) != (int(width), int(height)):
-                asset_format = ensure_format(media_width, media_height)
-            add_asset(
-                resources,
-                asset_id,
-                resolved,
-                fcpx_time(declared_duration, fps),
-                asset_format,
-                media_info,
-            )
+            record = asset_records.get(resolved)
+            if record is None:
+                record = {
+                    "id": f"a{len(asset_records) + 1}",
+                    "path": resolved,
+                    "fallback_format": sequence_format,
+                    "max_source_end": 0.0,
+                }
+                asset_records[resolved] = record
+            timeline_assets[(timeline_index, source_id)] = (str(record["id"]), resolved)
+
+    for timeline_index, timeline in enumerate(edl["timelines"]):
+        for item in timeline["ranges"]:
+            _, resolved = timeline_assets[(timeline_index, item["source"])]
+            record = asset_records[resolved]
+            record["max_source_end"] = max(float(record["max_source_end"]), float(item["source_end"]))
+            for layer in item.get("visual_layers") or []:
+                layer_source = str(layer.get("source", item["source"]))
+                _, layer_resolved = timeline_assets[(timeline_index, layer_source)]
+                layer_record = asset_records[layer_resolved]
+                layer_record["max_source_end"] = max(
+                    float(layer_record["max_source_end"]),
+                    float(layer.get("source_end", item["source_end"])),
+                )
+
+    for record in asset_records.values():
+        resolved = record["path"]
+        media_info = media_by_path.get(resolved)
+        try:
+            media_duration = float((media_info or {}).get("duration") or 0.0)
+        except (TypeError, ValueError):
+            media_duration = 0.0
+        declared_duration = media_duration if media_duration > 0 else float(record["max_source_end"])
+        asset_format = str(record["fallback_format"])
+        try:
+            media_width = int((media_info or {}).get("width") or 0)
+            media_height = int((media_info or {}).get("height") or 0)
+        except (TypeError, ValueError):
+            media_width = 0
+            media_height = 0
+        if media_width > 0 and media_height > 0:
+            asset_format = ensure_format(media_width, media_height)
+        asset_formats[resolved] = asset_format
+        add_asset(
+            resources,
+            str(record["id"]),
+            resolved,
+            fcpx_time(declared_duration, fps),
+            asset_format,
+            media_info,
+        )
 
     library = ET.SubElement(fcpxml, "library")
     event = ET.SubElement(library, "event", {"name": edl["project_name"]})
@@ -287,19 +371,23 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
             duration_frames = fcpx_frames(duration, fps)
             if duration_frames <= 0:
                 raise ValueError(f"range {index + 1} duration rounds to zero frames")
-            asset_id, _ = assets[item["source"]]
+            asset_id, _ = timeline_assets[(timeline_index, item["source"])]
             clip_name = item.get("beat") or item.get("quote") or f"Clip {index + 1}"
+            visual_layers = item.get("visual_layers") or []
+            primary_layer_index = primary_visual_layer_index(item)
+            primary_layer = visual_layers[primary_layer_index] if primary_layer_index is not None else None
             clip = ET.SubElement(
                 spine,
                 "asset-clip",
                 {
-                    "name": str(clip_name),
+                    "name": str(primary_layer.get("name") if primary_layer else clip_name),
                     "ref": asset_id,
                     "offset": fcpx_time(record_start, fps),
                     "start": fcpx_time(source_start, fps),
                     "duration": fcpx_time_from_frames(duration_frames, fps),
-                    "format": formats[(int(width), int(height))],
-                    "srcEnable": "all",
+                    "format": asset_formats[timeline_assets[(timeline_index, item["source"])][1]]
+                    if primary_layer
+                    else formats[(int(width), int(height))],
                     "audioRole": "dialogue",
                     "videoRole": "video",
                 },
@@ -316,12 +404,27 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                 },
             )
             add_time_map(clip, item, fps)
-            visual_layers = item.get("visual_layers") or []
             if visual_layers:
-                clip.set("srcEnable", "audio")
+                if primary_layer is None:
+                    clip.set("srcEnable", "audio")
+                else:
+                    layer_media = media_by_path.get(timeline_assets[(timeline_index, item["source"])][1].resolve(), {})
+                    source_width = int(primary_layer.get("source_width", layer_media.get("width") or width))
+                    source_height = int(primary_layer.get("source_height", layer_media.get("height") or height))
+                    add_visual_adjustments(
+                        clip,
+                        primary_layer,
+                        source_width=source_width,
+                        source_height=source_height,
+                        timeline_width=int(width),
+                        timeline_height=int(height),
+                        resolve_crop_x_factor=resolve_crop_x_factor,
+                    )
                 for layer_index, layer in enumerate(visual_layers):
+                    if primary_layer_index is not None and layer_index == primary_layer_index:
+                        continue
                     layer_source = str(layer.get("source", item["source"]))
-                    layer_asset_id, layer_path = assets[layer_source]
+                    layer_asset_id, layer_path = timeline_assets[(timeline_index, layer_source)]
                     layer_source_start, _, _ = visual_layer_timing(item, layer)
                     layer_clip = ET.SubElement(
                         clip,
@@ -333,7 +436,7 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                             "offset": fcpx_time(source_start, fps),
                             "start": fcpx_time(layer_source_start, fps),
                             "duration": fcpx_time_from_frames(duration_frames, fps),
-                            "format": formats[(int(width), int(height))],
+                            "format": asset_formats[layer_path],
                             "srcEnable": "video",
                             "videoRole": "video",
                         },
@@ -349,6 +452,7 @@ def build_fcpxml(edl_path: Path) -> ET.ElementTree:
                         source_height=source_height,
                         timeline_width=int(width),
                         timeline_height=int(height),
+                        resolve_crop_x_factor=resolve_crop_x_factor,
                     )
             else:
                 ET.SubElement(clip, "adjust-conform", {"type": "fill"})
@@ -393,14 +497,121 @@ def timeline_duration(timeline: dict) -> float:
     return end
 
 
+def _path_from_file_url(value: str) -> Path | None:
+    parsed = urlparse(value)
+    if parsed.scheme != "file":
+        return None
+    path = unquote(parsed.path)
+    if len(path) >= 3 and path[0] == "/" and path[2] == ":":
+        path = path[1:]
+    return Path(path).resolve()
+
+
+def _fcpx_time_seconds(value: str) -> float:
+    if not value.endswith("s"):
+        raise ValueError(f"FCPXML time does not end with 's': {value}")
+    raw = value[:-1]
+    if "/" in raw:
+        numerator, denominator = raw.split("/", maxsplit=1)
+        return float(Fraction(int(numerator), int(denominator)))
+    return float(raw or 0)
+
+
+def _required_source_ends_by_path(edl_path: Path, edl: dict) -> dict[Path, float]:
+    footage_root = edl_path.parent.parent
+    required: dict[Path, float] = {}
+    for timeline in edl["timelines"]:
+        sources = timeline["sources"]
+        for item in timeline["ranges"]:
+            source_path = ensure_within(resolve_relative(sources[item["source"]], footage_root), footage_root).resolve()
+            required[source_path] = max(required.get(source_path, 0.0), float(item["source_end"]))
+            for layer in item.get("visual_layers") or []:
+                layer_source = str(layer.get("source", item["source"]))
+                layer_path = ensure_within(resolve_relative(sources[layer_source], footage_root), footage_root).resolve()
+                required[layer_path] = max(required.get(layer_path, 0.0), float(layer.get("source_end", item["source_end"])))
+    return required
+
+
+def fcpxml_integrity_issues(edl_path: Path, fcpxml_path: Path | None = None) -> list[str]:
+    edl = read_json(edl_path)
+    fps = float(edl["fps"])
+    xml_path = fcpxml_path or default_fcpxml_path(edl_path, edl)
+    root = ET.parse(xml_path).getroot()
+    issues: list[str] = []
+    required_source_ends = _required_source_ends_by_path(edl_path, edl)
+
+    for asset in root.findall("./resources/asset"):
+        media_rep = asset.find("./media-rep")
+        source_path = _path_from_file_url(media_rep.attrib.get("src", "")) if media_rep is not None else None
+        if source_path is None:
+            continue
+        required_end = required_source_ends.get(source_path)
+        if required_end is None:
+            continue
+        declared_duration = _fcpx_time_seconds(asset.attrib.get("duration", "0s"))
+        if declared_duration + (1 / fps) < required_end:
+            issues.append(
+                f"asset {asset.attrib.get('name', asset.attrib['id'])} declares {declared_duration:.3f}s "
+                f"but EDL references source time {required_end:.3f}s"
+            )
+
+    projects = root.findall("./library/event/project")
+    for timeline_index, timeline in enumerate(edl["timelines"]):
+        if timeline_index >= len(projects):
+            issues.append(f"timeline {timeline_index + 1} has no matching FCPXML project")
+            continue
+        primary_clips = projects[timeline_index].findall("./sequence/spine/asset-clip")
+        ranges = sorted(timeline["ranges"], key=lambda item: float(item.get("record_start", 0)))
+        for range_index, item in enumerate(ranges):
+            expected_layers = item.get("visual_layers") or []
+            if not expected_layers:
+                continue
+            if range_index >= len(primary_clips):
+                issues.append(f"timeline {timeline_index + 1} range {range_index + 1} has no matching FCPXML clip")
+                continue
+            clip = primary_clips[range_index]
+            layers = clip.findall("./asset-clip")
+            primary_index = primary_visual_layer_index(item)
+            expected_connected_count = len(expected_layers) if primary_index is None else len(expected_layers) - 1
+            if primary_index is None and clip.attrib.get("srcEnable") != "audio":
+                issues.append(
+                    f"timeline {timeline_index + 1} range {range_index + 1} has visual_layers "
+                    "but the primary FCPXML clip is not audio-only"
+                )
+            if primary_index is not None and clip.attrib.get("srcEnable") == "audio":
+                issues.append(
+                    f"timeline {timeline_index + 1} range {range_index + 1} has a primary visual layer "
+                    "but the primary FCPXML clip is audio-only"
+                )
+            if len(layers) != expected_connected_count:
+                issues.append(
+                    f"timeline {timeline_index + 1} range {range_index + 1} expected "
+                    f"{expected_connected_count} connected visual layer clips but FCPXML has {len(layers)}"
+                )
+                continue
+            for layer_index, layer in enumerate(layers):
+                if layer.attrib.get("srcEnable") != "video":
+                    issues.append(
+                        f"timeline {timeline_index + 1} range {range_index + 1} layer {layer_index + 1} "
+                        "is not video-only"
+                    )
+
+    return issues
+
+
 def default_fcpxml_path(edl_path: Path, edl: dict | None = None) -> Path:
     payload = edl or read_json(edl_path)
     return edl_path.parent / f"{safe_filename(payload['project_name'], 'timeline')}.fcpxml"
 
 
-def write_fcpxml(edl_path: Path, out_path: Path) -> Path:
+def write_fcpxml(
+    edl_path: Path,
+    out_path: Path,
+    *,
+    resolve_crop_x_factor: float = DEFAULT_RESOLVE_CROP_X_FACTOR,
+) -> Path:
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    tree = build_fcpxml(edl_path)
+    tree = build_fcpxml(edl_path, resolve_crop_x_factor=resolve_crop_x_factor)
     tree.write(out_path, encoding="utf-8", xml_declaration=True)
     return out_path
 
@@ -409,13 +620,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Export FCPXML from video-timeline-copilot EDL")
     parser.add_argument("edl", type=Path)
     parser.add_argument("--out", type=Path, default=None, help="Output .fcpxml path")
+    parser.add_argument(
+        "--resolve-crop-x-factor",
+        type=float,
+        default=DEFAULT_RESOLVE_CROP_X_FACTOR,
+        help="Resolve horizontal crop import factor used to serialize visual-layer left/right trim values",
+    )
     args = parser.parse_args()
 
     edl_path = args.edl.resolve()
     edl = read_json(edl_path)
     out_path = args.out or default_fcpxml_path(edl_path, edl)
 
-    result = write_fcpxml(edl_path, out_path)
+    result = write_fcpxml(edl_path, out_path, resolve_crop_x_factor=args.resolve_crop_x_factor)
     print(f"FCPXML -> {result}")
 
 

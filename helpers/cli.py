@@ -17,6 +17,7 @@ COMMANDS = {
     "update-fcpxml": ("helpers.update_fcpxml", "Update an existing FCPXML file in place"),
     "import-fcpxml": ("helpers.import_fcpxml", "Import an edited FCPXML back into an EDL"),
     "render-preview": ("helpers.render_preview", "Render an MP4 preview from an EDL"),
+    "render-fcpxml-preview": ("helpers.render_fcpxml_preview", "Render an MP4 preview from an FCPXML file"),
     "qa-preview": ("helpers.qa_preview", "Run automated QA checks for a preview render"),
     "evaluate-edl": ("helpers.evaluate_edl", "Evaluate an EDL before final handoff"),
     "resolve-env-check": ("helpers.resolve_env_check", "Check DaVinci Resolve scripting access"),

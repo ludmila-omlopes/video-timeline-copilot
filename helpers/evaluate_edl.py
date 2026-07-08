@@ -5,6 +5,7 @@ from pathlib import Path
 import sys
 
 from helpers.common import read_json, write_json
+from helpers.export_fcpxml import default_fcpxml_path, fcpxml_integrity_issues
 from helpers.qa_preview import default_report_path
 from helpers.validate_edl import cut_quality_warnings, validate
 
@@ -71,6 +72,8 @@ def _revision_guidance(blockers: list[str], warnings: list[str]) -> list[str]:
         guidance.append("Move cuts to clean word, phrase, pause, or visual transition boundaries.")
     if any("duration" in item for item in blockers):
         guidance.append("Compare record_start values and source ranges against the rendered preview duration.")
+    if any("FCPXML integrity" in item for item in blockers):
+        guidance.append("Re-export FCPXML from the current EDL and verify visual layers and asset durations before handoff.")
     if any("audio-only" in item or "video-only" in item for item in blockers):
         guidance.append("Inspect source stream types and keep linked audio/video ranges unless the user explicitly asked otherwise.")
     if any("empty frame area" in item or "transform zoom" in item for item in blockers):
@@ -125,6 +128,20 @@ def evaluate_edl(
         criteria.append(_criterion("clip_boundaries", "warn", nonblocking_cut_warnings))
     else:
         criteria.append(_criterion("clip_boundaries", "pass"))
+
+    fcpxml_path = default_fcpxml_path(edl_path)
+    if validation_errors:
+        criteria.append(_criterion("fcpxml_integrity", "not_checked", ["EDL validation failed"]))
+    elif fcpxml_path.exists():
+        fcpxml_issues = fcpxml_integrity_issues(edl_path, fcpxml_path)
+        if fcpxml_issues:
+            blockers.extend(f"FCPXML integrity failed: {issue}" for issue in fcpxml_issues)
+            criteria.append(_criterion("fcpxml_integrity", "fail", fcpxml_issues))
+        else:
+            criteria.append(_criterion("fcpxml_integrity", "pass"))
+    else:
+        warnings.append(f"FCPXML integrity was not checked because no FCPXML exists: {fcpxml_path}")
+        criteria.append(_criterion("fcpxml_integrity", "not_checked", [f"missing FCPXML: {fcpxml_path}"]))
 
     qa_payload = None
     if qa_report.exists():
