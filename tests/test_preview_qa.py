@@ -110,7 +110,8 @@ def test_fcpxml_preview_treats_transform_y_as_resolve_y_up() -> None:
     assert (overlay_x, overlay_y, display_w, display_h) == (0, 0, 1080, 960)
 
 
-def test_fcpxml_preview_seeks_relative_to_asset_timecode_origin(tmp_path: Path) -> None:
+def test_fcpxml_preview_seeks_relative_to_asset_timecode_origin(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("helpers.render_fcpxml_preview.find_ffmpeg", lambda: "ffmpeg")
     clip = ET.fromstring('<asset-clip ref="a1" start="3612s" duration="2s" />')
     args = _fcpxml_segment_args(
         clip,
