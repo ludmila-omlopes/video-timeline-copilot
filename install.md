@@ -20,11 +20,71 @@ environment files into the installed skill.
 
 `skills.sh` does not run post-install hooks from skills. If the helper CLI is
 not installed when the skill is first used, the skill tells the agent to ask
-before running the install commands already documented in `SKILL.md`. The skill
-also tells the agent to refresh PATH after installing `uv`/`vtc` and verify
-`vtc --help` in the current shell before continuing. Manual FFmpeg/Python
+before running the bootstrap commands in the "Agent bootstrap" section below.
+The skill also tells the agent to refresh PATH after installing `uv`/`vtc` and
+verify `vtc --help` in the current shell before continuing. Manual FFmpeg/Python
 fallbacks are reserved for cases where the user refuses to install `vtc` or `uv`
 and still asks the agent to continue.
+
+## Agent bootstrap
+
+These are the commands the skill instructs an agent to run (after asking the
+user for permission) when `vtc` is missing from `PATH` in a new environment.
+They install `uv` if needed, install the helper CLI as an isolated tool, and
+make `vtc` available in the current shell.
+
+Windows PowerShell:
+
+```powershell
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+  winget install --id astral-sh.uv -e
+}
+
+$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+$env:Path = "$machinePath;$userPath"
+
+$uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
+if (-not $uv) {
+  $uv = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter uv.exe -ErrorAction SilentlyContinue |
+    Select-Object -First 1 -ExpandProperty FullName
+}
+if (-not $uv) {
+  throw "uv is installed or requested, but uv.exe was not found. Reopen PowerShell or install uv from https://docs.astral.sh/uv/"
+}
+
+& $uv tool install --force "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+
+$toolDir = "$env:USERPROFILE\.local\bin"
+if (Test-Path $toolDir) {
+  $env:Path = "$toolDir;$env:Path"
+  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+  if ($userPath -notlike "*$toolDir*") {
+    [Environment]::SetEnvironmentVariable("Path", "$userPath;$toolDir", "User")
+  }
+}
+
+vtc --help
+```
+
+macOS/Linux:
+
+```bash
+if ! command -v uv >/dev/null 2>&1; then
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+export PATH="$HOME/.local/bin:$PATH"
+vtc --help
+```
+
+If the agent should run helper commands without installing the tool
+permanently, `uv tool run` is the approved alternative:
+
+```bash
+uv tool run --from "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main" vtc
+```
 
 ## Bundled installer
 
