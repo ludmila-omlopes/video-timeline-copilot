@@ -25,6 +25,31 @@ Never serialize float seconds directly.
 For example, at 29.97002997002997 fps, one frame is `1001/30000s`. Keeping
 times rational avoids XML that looks precise but lands off-frame after import.
 
+### Embedded Media Timecode
+
+EDL `source_start` and `source_end` values are always relative to the first
+frame in the media file. Source files may instead expose a nonzero timecode
+origin, commonly `01:00:00:00` in MOV files. `vtc inventory` reads this value
+from the primary video stream, a QuickTime `tmcd` data stream, or format tags
+and stores it as `start_timecode` plus `timecode_rate` in
+`edit/media_index.json`.
+
+The exporter converts that origin to rational seconds and uses it as the
+FCPXML asset `start`. Every source-facing time is then written in the asset's
+local timeline:
+
+- a range at EDL source time `12s` starts at `3612s` when its asset starts at
+  `3600s`,
+- connected layers use their own asset origins for `start` while keeping
+  `offset` equal to the parent clip's absolute `start`,
+- `timeMap` values include the same origin so retimes remain within the asset's
+  declared time range.
+
+The importer and FCPXML preview renderer subtract the asset origin again before
+writing EDL times or seeking into the physical file. Media indexes created by
+older versions do not contain these fields; rerun `vtc inventory` before
+re-exporting an affected project.
+
 ## Timeline Containment Model
 
 The DTD says `offset` defines an object's location in the parent timeline. It
@@ -175,6 +200,8 @@ surface, not a round-trip editing contract.
 
 - Run `python -m pytest tests/test_fcpxml_invariants.py -q`.
 - Never serialize float seconds; use the frame-quantized helpers.
+- Preserve embedded asset timecode across plain clips, connected layers,
+  retimes, FCPXML import, and FCPXML preview seeking.
 - For anchored connected clips, keep child `offset == parent.start`.
 - Keep asset durations long enough to cover every referenced source end.
 - Add a pinned-value test for any new geometry behavior.

@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 
 from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
 from helpers.timing import range_effective_speed, range_playback_speed, range_source_duration, range_timeline_duration
+from helpers.timecode import timecode_to_seconds
 from helpers.transforms import (
     aspect_fill_crop_rect,
     rect_trim_percentages,
@@ -73,7 +74,7 @@ def has_explicit_speed(item: dict) -> bool:
     return item.get("speed") is not None or item.get("playback_speed") is not None or item.get("speed_percent") is not None
 
 
-def add_time_map(clip: ET.Element, item: dict, fps: float) -> None:
+def add_time_map(clip: ET.Element, item: dict, fps: float, *, source_origin: float = 0.0) -> None:
     source_duration = range_source_duration(item)
     record_duration = range_timeline_duration(item)
     explicit_speed = range_playback_speed(item) if has_explicit_speed(item) else range_effective_speed(item)
@@ -84,14 +85,18 @@ def add_time_map(clip: ET.Element, item: dict, fps: float) -> None:
     source_start = float(item["source_start"])
     source_end = float(item["source_end"])
     time_map = ET.SubElement(clip, "timeMap", {"frameSampling": "floor"})
-    ET.SubElement(time_map, "timept", {"time": "0s", "interp": "linear", "value": fcpx_time(source_start, fps)})
+    ET.SubElement(
+        time_map,
+        "timept",
+        {"time": "0s", "interp": "linear", "value": fcpx_time(source_origin + source_start, fps)},
+    )
     ET.SubElement(
         time_map,
         "timept",
         {
             "time": fcpx_time(time_map_duration, fps),
             "interp": "linear",
-            "value": fcpx_time(source_end, fps),
+            "value": fcpx_time(source_origin + source_end, fps),
         },
     )
 
@@ -221,11 +226,12 @@ def add_asset(
     duration: str,
     format_id: str,
     media_info: dict | None = None,
+    start: str = "0s",
 ) -> None:
     attrs = {
         "id": asset_id,
         "name": path.stem,
-        "start": "0s",
+        "start": start,
         "duration": duration,
         "hasVideo": "1",
         "hasAudio": "1",
@@ -241,6 +247,25 @@ def add_asset(
         attrs,
     )
     ET.SubElement(asset, "media-rep", {"kind": "original-media", "src": file_url(path)})
+
+
+def media_timecode_origin(media_info: dict | None, fallback_fps: float) -> float:
+    start_timecode = (media_info or {}).get("start_timecode")
+    if not start_timecode:
+        return 0.0
+    frame_rates = [
+        (media_info or {}).get("timecode_rate"),
+        (media_info or {}).get("avg_frame_rate"),
+        fallback_fps,
+    ]
+    for frame_rate in frame_rates:
+        if frame_rate is None:
+            continue
+        try:
+            return timecode_to_seconds(str(start_timecode), frame_rate)
+        except (TypeError, ValueError, ZeroDivisionError):
+            continue
+    return 0.0
 
 
 def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOLVE_CROP_X_FACTOR) -> ET.ElementTree:
@@ -260,6 +285,7 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
     asset_records: dict[Path, dict] = {}
     timeline_assets: dict[tuple[int, str], tuple[str, Path]] = {}
     asset_formats: dict[Path, str] = {}
+    asset_origins: dict[Path, float] = {}
 
     def ensure_format(width: int, height: int) -> str:
         format_key = (int(width), int(height))
@@ -327,6 +353,8 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
         if media_width > 0 and media_height > 0:
             asset_format = ensure_format(media_width, media_height)
         asset_formats[resolved] = asset_format
+        asset_origin = media_timecode_origin(media_info, fps)
+        asset_origins[resolved] = asset_origin
         add_asset(
             resources,
             str(record["id"]),
@@ -334,6 +362,7 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
             fcpx_time(declared_duration, fps),
             asset_format,
             media_info,
+            start=fcpx_time(asset_origin, fps),
         )
 
     library = ET.SubElement(fcpxml, "library")
@@ -371,7 +400,8 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
             duration_frames = fcpx_frames(duration, fps)
             if duration_frames <= 0:
                 raise ValueError(f"range {index + 1} duration rounds to zero frames")
-            asset_id, _ = timeline_assets[(timeline_index, item["source"])]
+            asset_id, asset_path = timeline_assets[(timeline_index, item["source"])]
+            source_origin = asset_origins[asset_path]
             clip_name = item.get("beat") or item.get("quote") or f"Clip {index + 1}"
             visual_layers = item.get("visual_layers") or []
             primary_layer_index = primary_visual_layer_index(item)
@@ -383,7 +413,7 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
                     "name": str(primary_layer.get("name") if primary_layer else clip_name),
                     "ref": asset_id,
                     "offset": fcpx_time(record_start, fps),
-                    "start": fcpx_time(source_start, fps),
+                    "start": fcpx_time(source_origin + source_start, fps),
                     "duration": fcpx_time_from_frames(duration_frames, fps),
                     "format": asset_formats[timeline_assets[(timeline_index, item["source"])][1]]
                     if primary_layer
@@ -403,7 +433,7 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
                     "value": range_id_for(timeline_index, index, item),
                 },
             )
-            add_time_map(clip, item, fps)
+            add_time_map(clip, item, fps, source_origin=source_origin)
             if visual_layers:
                 if primary_layer is None:
                     clip.set("srcEnable", "audio")
@@ -426,6 +456,7 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
                     layer_source = str(layer.get("source", item["source"]))
                     layer_asset_id, layer_path = timeline_assets[(timeline_index, layer_source)]
                     layer_source_start, _, _ = visual_layer_timing(item, layer)
+                    layer_source_origin = asset_origins[layer_path]
                     layer_clip = ET.SubElement(
                         clip,
                         "asset-clip",
@@ -433,8 +464,8 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
                             "name": str(layer.get("name") or layer.get("label") or f"Layer {layer_index + 1}"),
                             "ref": layer_asset_id,
                             "lane": str(int(layer.get("lane", layer.get("track", layer_index + 1)))),
-                            "offset": fcpx_time(source_start, fps),
-                            "start": fcpx_time(layer_source_start, fps),
+                            "offset": fcpx_time(source_origin + source_start, fps),
+                            "start": fcpx_time(layer_source_origin + layer_source_start, fps),
                             "duration": fcpx_time_from_frames(duration_frames, fps),
                             "format": asset_formats[layer_path],
                             "srcEnable": "video",
@@ -444,7 +475,12 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
                     layer_media = media_by_path.get(layer_path.resolve(), {})
                     source_width = int(layer.get("source_width", layer_media.get("width") or width))
                     source_height = int(layer.get("source_height", layer_media.get("height") or height))
-                    add_time_map(layer_clip, {**item, **layer, "record_duration": duration}, fps)
+                    add_time_map(
+                        layer_clip,
+                        {**item, **layer, "record_duration": duration},
+                        fps,
+                        source_origin=layer_source_origin,
+                    )
                     add_visual_adjustments(
                         layer_clip,
                         layer,

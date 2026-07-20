@@ -7,13 +7,15 @@ from pathlib import Path
 
 from helpers.common import VIDEO_EXTENSIONS, write_json
 from helpers.media_tools import ffprobe_json
+from helpers.timecode import find_start_timecode
 
 
 def ffprobe(path: Path) -> dict:
     payload = ffprobe_json(path)
     video_stream = next((s for s in payload.get("streams", []) if s.get("codec_type") == "video"), {})
     audio_stream = next((s for s in payload.get("streams", []) if s.get("codec_type") == "audio"), {})
-    return {
+    avg_frame_rate = video_stream.get("avg_frame_rate")
+    item = {
         "path": str(path),
         "name": path.stem,
         "duration": float(payload.get("format", {}).get("duration", 0.0)),
@@ -23,8 +25,13 @@ def ffprobe(path: Path) -> dict:
         "audio_codec": audio_stream.get("codec_name"),
         "audio_channels": int(audio_stream.get("channels", 0) or 0),
         "audio_rate": int(audio_stream.get("sample_rate", 0) or 0),
-        "avg_frame_rate": video_stream.get("avg_frame_rate"),
+        "avg_frame_rate": avg_frame_rate,
     }
+    start_timecode = find_start_timecode(payload)
+    if start_timecode:
+        item["start_timecode"] = start_timecode
+        item["timecode_rate"] = avg_frame_rate
+    return item
 
 
 def iter_source_videos(root: Path, edit_dir: Path) -> list[Path]:

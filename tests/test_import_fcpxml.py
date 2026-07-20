@@ -127,6 +127,43 @@ def test_import_fcpxml_reads_resolve_time_map_as_speed(tmp_path: Path) -> None:
     assert report["timelines"][0]["retimed_ranges"][0]["id"] == "t001-r0001"
 
 
+def test_import_fcpxml_round_trips_nonzero_asset_timecode_and_retime(tmp_path: Path) -> None:
+    base_edl = write_base_edl(tmp_path)
+    edl = imported_payload(base_edl)
+    first_range = edl["timelines"][0]["ranges"][0]
+    first_range["source_end"] = 2.0
+    first_range["speed"] = 2.0
+    base_edl.write_text(json.dumps(edl), encoding="utf-8")
+    (base_edl.parent / "media_index.json").write_text(
+        json.dumps(
+            {
+                "media": [
+                    {
+                        "path": "raw/clip.mp4",
+                        "duration": 120.0,
+                        "width": 1920,
+                        "height": 1080,
+                        "start_timecode": "01:00:00:00",
+                        "timecode_rate": "30/1",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    xml_path = exported_xml(base_edl)
+    out_path = base_edl.parent / "edl.imported.json"
+
+    report = import_fcpxml(xml_path, base_edl, out_path)
+    imported = imported_payload(out_path)
+    imported_first = imported["timelines"][0]["ranges"][0]
+
+    assert report["status"] == "pass"
+    assert imported_first["source_start"] == 0.0
+    assert imported_first["source_end"] == 2.0
+    assert imported_first["speed"] == 2.0
+
+
 def test_import_fcpxml_reports_reordered_ranges(tmp_path: Path) -> None:
     base_edl = write_base_edl(tmp_path)
     xml_path = exported_xml(base_edl)

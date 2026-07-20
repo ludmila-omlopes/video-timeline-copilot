@@ -8,8 +8,10 @@
 
 `helpers/inventory.py` uses `ffprobe` to create `edit/media_index.json`.
 
-This gives the agent concrete file paths, durations, codecs, and dimensions
-without asking the model to infer them from filenames.
+This gives the agent concrete file paths, durations, codecs, dimensions, frame
+rates, and embedded media timecode without asking the model to infer them from
+filenames. FCPXML export uses the indexed timecode as the asset's source-time
+origin; EDL timestamps remain relative to the first frame of each file.
 
 ### 2. Video Analysis Layer
 

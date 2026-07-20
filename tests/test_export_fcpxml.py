@@ -583,3 +583,76 @@ def test_build_fcpxml_sequence_duration_matches_timeline_duration_for_ntsc_fps(t
     expected_seconds = Fraction.from_float(timeline_duration(edl["timelines"][0])).limit_denominator(100000)
     one_frame = Fraction(1001, 30000)
     assert abs(actual_seconds - expected_seconds) <= one_frame
+
+
+def test_build_fcpxml_offsets_assets_clips_layers_and_retimes_by_embedded_timecode(tmp_path: Path) -> None:
+    edl_path, edl = write_fcpx_edl(
+        tmp_path,
+        ranges=[
+            {
+                "source": "A001",
+                "source_start": 12.0,
+                "source_end": 16.0,
+                "record_start": 0.0,
+                "speed": 2.0,
+                "visual_layers": [
+                    {
+                        "name": "Screen",
+                        "source_rect": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+                        "dest_rect": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+                    },
+                    {
+                        "name": "Facecam",
+                        "source": "FACE",
+                        "source_start": 20.0,
+                        "source_end": 24.0,
+                        "source_rect": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+                        "dest_rect": {"x": 0, "y": 0, "width": 960, "height": 540},
+                    },
+                ],
+            }
+        ],
+    )
+    (tmp_path / "raw" / "facecam.mp4").write_bytes(b"")
+    edl["timelines"][0]["sources"]["FACE"] = "raw/facecam.mp4"
+    (tmp_path / "edit" / "media_index.json").write_text(
+        json.dumps(
+            {
+                "media": [
+                    {
+                        "path": "raw/clip.mp4",
+                        "duration": 120.0,
+                        "width": 1920,
+                        "height": 1080,
+                        "start_timecode": "01:00:00:00",
+                        "timecode_rate": "30/1",
+                    },
+                    {
+                        "path": "raw/facecam.mp4",
+                        "duration": 90.0,
+                        "width": 1920,
+                        "height": 1080,
+                        "start_timecode": "02:00:00:00",
+                        "timecode_rate": "30/1",
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    edl_path.write_text(json.dumps(edl), encoding="utf-8")
+
+    root = build_fcpxml(edl_path).getroot()
+    assets = {asset.attrib["name"]: asset for asset in root.findall("./resources/asset")}
+    primary = root.find("./library/event/project/sequence/spine/asset-clip")
+    assert primary is not None
+    layer = primary.find("./asset-clip")
+    assert layer is not None
+
+    assert assets["clip"].attrib["start"] == "3600s"
+    assert assets["facecam"].attrib["start"] == "7200s"
+    assert primary.attrib["start"] == "3612s"
+    assert [point.attrib["value"] for point in primary.findall("./timeMap/timept")] == ["3612s", "3616s"]
+    assert layer.attrib["offset"] == primary.attrib["start"]
+    assert layer.attrib["start"] == "7220s"
+    assert [point.attrib["value"] for point in layer.findall("./timeMap/timept")] == ["7220s", "7224s"]

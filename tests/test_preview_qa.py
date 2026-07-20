@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 from helpers.cli import COMMANDS
 from helpers.qa_preview import default_contact_sheet_path, default_report_path, qa_preview
-from helpers.render_fcpxml_preview import _layer_geometry, _trimmed_source_rect
+from helpers.render_fcpxml_preview import _layer_geometry, _segment_args as _fcpxml_segment_args, _trimmed_source_rect
 from helpers.render_preview import _layered_segment_args, _segment_args, preview_path, render_preview
 
 
@@ -108,6 +108,24 @@ def test_fcpxml_preview_treats_transform_y_as_resolve_y_up() -> None:
     )
 
     assert (overlay_x, overlay_y, display_w, display_h) == (0, 0, 1080, 960)
+
+
+def test_fcpxml_preview_seeks_relative_to_asset_timecode_origin(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("helpers.render_fcpxml_preview.find_ffmpeg", lambda: "ffmpeg")
+    clip = ET.fromstring('<asset-clip ref="a1" start="3612s" duration="2s" />')
+    args = _fcpxml_segment_args(
+        clip,
+        asset_records={
+            "a1": {"path": tmp_path / "clip.mov", "width": 1920, "height": 1080, "start": 3600.0}
+        },
+        timeline_width=1920,
+        timeline_height=1080,
+        fps=30.0,
+        out_path=tmp_path / "segment.mp4",
+        resolve_crop_x_factor=2.0,
+    )
+
+    assert args[args.index("-ss") + 1] == "12.000000"
 
 
 def test_fcpxml_preview_applies_horizontal_source_center_compensation() -> None:
