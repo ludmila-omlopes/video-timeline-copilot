@@ -15,6 +15,11 @@ timeline from local media. Users should be able to ask for outcomes such as
 "remove silent parts", "make a 30 second highlight", or "create a rough cut"
 without knowing about `edit/edl.json`, SRT, FCPXML, or helper commands.
 
+For Shorts and other social-first edits, treat the deliverable as a complete,
+stand-alone piece of communication: one idea, a clear opening hook, a useful
+payoff, and an intentional ending. Optimize for clarity and retention without
+turning the cut into a sequence of arbitrary jump cuts.
+
 Do not render a flattened MP4 as the primary deliverable unless the user
 explicitly asks for a render.
 
@@ -45,6 +50,9 @@ explicitly asks for a render.
 13. Repeated delivery, false starts, and self-corrections are not useful
     story beats. When adjacent transcript phrases restate the same idea, keep
     only the cleanest complete version and discard the earlier/incomplete take.
+14. A Short must end on a deliberate beat. Do not let the source clip stop after
+    the payoff, during a sentence, or on an accidental reaction unless that
+    abruptness is clearly part of the requested style.
 
 ## CLI Invocation
 
@@ -53,8 +61,9 @@ uses `uv tool install` so `vtc` should be installed as an isolated tool.
 
 Before running the workflow for the first time in an environment, bootstrap the
 helper CLI. Do not ask the user how to install `uv` or `vtc`; the commands are
-listed here. Ask for approval to run installation commands when required by the
-agent environment, then run the appropriate steps.
+listed in `install.md` (section "Agent bootstrap", in the same directory as this
+file). Ask for approval to run installation commands when required by the agent
+environment, then run the appropriate steps.
 
 First check whether the helper CLI is available:
 
@@ -66,53 +75,13 @@ If `vtc` is missing and the user has not already approved installing the helper
 CLI, stop before the video workflow. Explain that the skill instructions are
 installed but the Python helper CLI is still required for media inventory,
 transcription, EDL validation, subtitle export, FCPXML export, preview
-rendering, evaluation, and Resolve handoff. Ask for permission before installing
-it:
-
-Windows PowerShell:
-
-```powershell
-if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-  winget install --id astral-sh.uv -e
-}
-
-$machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-$userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-$env:Path = "$machinePath;$userPath"
-
-$uv = (Get-Command uv -ErrorAction SilentlyContinue).Source
-if (-not $uv) {
-  $uv = Get-ChildItem "$env:LOCALAPPDATA\Microsoft\WinGet\Packages" -Recurse -Filter uv.exe -ErrorAction SilentlyContinue |
-    Select-Object -First 1 -ExpandProperty FullName
-}
-if (-not $uv) {
-  throw "uv is installed or requested, but uv.exe was not found. Reopen PowerShell or install uv from https://docs.astral.sh/uv/"
-}
-
-& $uv tool install --force "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
-
-$toolDir = "$env:USERPROFILE\.local\bin"
-if (Test-Path $toolDir) {
-  $env:Path = "$toolDir;$env:Path"
-  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-  if ($userPath -notlike "*$toolDir*") {
-    [Environment]::SetEnvironmentVariable("Path", "$userPath;$toolDir", "User")
-  }
-}
-
-vtc --help
-```
-
-macOS/Linux:
+rendering, evaluation, and Resolve handoff. Ask for permission before
+installing it. Once the user approves, read `install.md` and run the "Agent
+bootstrap" commands for the current platform. In short, they install `uv` if
+needed and then run:
 
 ```bash
-if ! command -v uv >/dev/null 2>&1; then
-  curl -LsSf https://astral.sh/uv/install.sh | sh
-  export PATH="$HOME/.local/bin:$PATH"
-fi
 uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
-export PATH="$HOME/.local/bin:$PATH"
-vtc --help
 ```
 
 After installation, always verify `vtc --help` works in the current shell before
@@ -126,15 +95,10 @@ and still asks you to continue. When using that degraded path, state that normal
 validation, preview QA, evaluation, and exports may be incomplete compared with
 the helper CLI workflow.
 
-If the user approves using `uv` without installing the tool permanently, you may
-run individual helper commands through uv:
-
-```bash
-uv tool run --from "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main" vtc
-```
-
-Treat `uv tool run` as an approved helper-CLI path, not as permission to bypass
-the helper workflow.
+If the user approves using `uv` without installing the tool permanently, run
+individual helper commands through the `uv tool run` invocation listed in
+`install.md`. Treat `uv tool run` as an approved helper-CLI path, not as
+permission to bypass the helper workflow.
 
 ## User-Facing Request Handling
 
@@ -171,9 +135,9 @@ For simple requests, choose conservative defaults:
   source length.
 - "Shorts", "YouTube Short", or vertical short-form edit: default to a 9:16
   timeline, usually `resolution: [1080, 1920]`, unless the user explicitly asks
-  for another format. Pick one self-contained idea, start on the strongest hook,
-  keep pacing tight without clipping words, and avoid intros/outros that do not
-  serve the short.
+  for another format. Select one self-contained idea and shape it as hook,
+  minimal context, payoff, and a deliberate ending. Do not pad to a target
+  duration or combine unrelated highlights just to fill the timeline.
 - "highlight" / "best moments": prioritize clear, self-contained transcript
   phrases and avoid isolated filler words, false starts, and duplicate
   deliveries.
@@ -212,7 +176,9 @@ there is ambiguity.
    ```
 
 3. Analyze visual context when the edit depends on visible events, scene
-   changes, action, on-screen text, objects, people, or framing:
+   changes, action, on-screen text, objects, people, or framing. For Shorts,
+   also do this before selecting clips whenever the crop, gameplay UI, facecam,
+   or visual payoff affects which take is strongest:
 
    ```bash
    vtc analyze-video /path/to/footage/raw/interview.mp4 --edit-dir /path/to/footage/edit
@@ -233,9 +199,11 @@ there is ambiguity.
    ```
 
 5. Read `edit/takes_packed.md`, any needed transcript JSON files, and sampled
-   frames referenced by the visual context. If `takes_packed.md` says no cached
-   video analysis exists, treat visual matching as limited and continue
-   transcript-only unless the user's prompt requires visible-event matching.
+   frames referenced by the visual context. For a Short, shortlist candidate
+   ideas and check each for a hook, enough context to stand alone, a payoff, a
+   clean ending, and a usable vertical crop. If `takes_packed.md` says no cached
+   video analysis exists, treat visual matching as limited and say so when
+   framing or visual selection materially affects the result.
 
 6. Write `edit/edl.json` from the user's requested outcome. Combine transcript
    timing with visual-analysis signals when selecting clips. For draft silence
@@ -246,7 +214,8 @@ there is ambiguity.
    ```
 
    Then inspect/refine the generated EDL when the request requires more than
-   mechanical silence removal.
+   mechanical silence removal. For a Shorts edit, prefer a deliberate manual
+   selection of one idea over using a silence-cut draft as the final story.
 
 7. Refine speech cut boundaries from the source audio:
 
@@ -312,7 +281,8 @@ there is ambiguity.
    explicitly wants to replace the base EDL; the helper validates a temporary
    import and writes an `edl.bak.json` backup before replacing.
 
-11. Optionally render a technical preview and QA report:
+11. Render a preview and QA report for Shorts, and do so for any other edit when
+    framing, captions, or technical timeline integrity is important:
 
    ```bash
    vtc render-preview /path/to/footage/edit/edl.json
@@ -327,7 +297,9 @@ there is ambiguity.
    edit/qa/contact_sheet.jpg
    ```
 
-   Read `preview_report.json` before handoff when using this path. Treat
+   Read `preview_report.json` before handoff. For Shorts, inspect the first
+   seconds, every crop change, caption placement, the payoff, and the final
+   frame, not only the automated checks. Treat
    duration mismatches, transform coverage failures, audio-only/video-only
    regions, record gaps, record overlaps, and short clips as issues to correct.
    When FCPXML geometry itself is under inspection, render the exported XML
@@ -340,7 +312,8 @@ there is ambiguity.
    Use this to compare the actual exported XML layout against the EDL preview
    when debugging Resolve crop/transform import behavior.
 
-12. Run self-evaluation before final handoff:
+12. Run self-evaluation before final handoff. For Shorts, require the preview
+    and strict cut warnings:
 
    ```bash
    vtc evaluate-edl /path/to/footage/edit/edl.json --require-preview --strict-cut-warnings --attempt 1 --max-attempts 3
@@ -404,35 +377,22 @@ Guardrails:
 
 ## Shorts-Specific Guidelines
 
-Use these rules whenever the user asks for Shorts, YouTube Shorts, vertical
-short-form, or a social cut intended to stand alone:
+Whenever the user asks for Shorts, YouTube Shorts, vertical short-form, or a
+social cut intended to stand alone, read `docs/shorts-guidelines.md` (relative
+to this file) before selecting clips and follow its decision procedure, framing
+rules, and QA checklist. The load-bearing defaults:
 
-- Format: default to a 9:16 vertical timeline, normally `resolution:
-  [1080, 1920]`. Do not change an explicitly requested format.
-- Duration: respect the user's requested duration. If none is given, choose a
-  compact cut around one complete idea instead of stretching to fill time.
-- Hook: open on the strongest sentence, reveal, contradiction, question, or
-  visual action. Cut preamble before the hook unless it is necessary context.
-- Structure: keep one main setup/payoff. Avoid stitching unrelated highlights
-  into one short unless the user asked for a montage.
-- Speech: remove dead air, false starts, duplicate retakes, and filler, but
-  preserve complete words and self-contained phrases. Run
-  `vtc refine-audio-cuts --replace` before validation/export.
-- Framing: for horizontal footage, choose an intentional vertical crop per
-  range. Keep faces, hands, important UI, and subtitles inside the vertical
-  frame.
-- Gameplay facecam: when a Short is cut from gameplay with a facecam overlay,
-  create distinct vertical scene types. Use `gameplay-facecam` for the
-  facecam/reaction shot. Use `gameplay-screen` for gameplay/screen shots so
-  the helper crops to the largest remaining gameplay region and does not show
-  the facecam again. Do not use a generic center crop if it repeats the facecam
-  in the screen-focused scene.
-- Captions: always export SRT. Prefer short caption chunks that track spoken
-  phrases; avoid long subtitle blocks that cover the subject.
-- B-roll: use B-roll only when it clarifies the point, hides a jump cut, or
-  adds necessary visual evidence. Do not bury the speaker under generic filler.
-- Handoff: for Shorts, render a preview and run QA when framing or captions are
-  important, because vertical crop mistakes are hard to see from EDL alone.
+- Format: 9:16 vertical timeline, normally `resolution: [1080, 1920]`, unless
+  the user explicitly requests another format.
+- Story: one self-contained idea shaped as hook -> minimal context -> payoff ->
+  deliberate ending. Choose the shortest cut that communicates it cleanly; do
+  not pad, and do not end on a clipped word or accidental beat.
+- Gameplay with a facecam overlay: use the `gameplay-facecam` /
+  `gameplay-screen` presets or `visual_layers`; never a generic center crop
+  that repeats the facecam in a screen-focused scene.
+- QA and handoff: always export SRT, render the preview, run `vtc qa-preview`,
+  inspect the hook, crop changes, captions, payoff, and ending, and gate
+  handoff on `vtc evaluate-edl --require-preview --strict-cut-warnings`.
 
 ## EDL Contract
 

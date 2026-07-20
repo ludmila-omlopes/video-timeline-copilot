@@ -3,42 +3,80 @@
 Use these guidelines when the user asks for Shorts, YouTube Shorts, vertical
 short-form edits, or social clips intended to stand alone.
 
+The goal is a complete, stand-alone piece: one idea, a strong opening hook, a
+useful payoff, and an intentional ending. Optimize for clarity and retention;
+do not confuse fast pacing with cutting every pause or changing shots without a
+reason.
+
+## Decision Procedure
+
+Before writing the EDL:
+
+1. Identify the requested format and duration. Default to 9:16 and
+   `resolution: [1080, 1920]`, but preserve an explicitly requested format or
+   duration.
+2. Read the packed transcript and visual context. When the crop, gameplay UI,
+   facecam, action, or visual payoff matters, analyze the video and inspect the
+   relevant sampled frames before choosing the moment.
+3. Shortlist complete candidate ideas. Rank them by hook strength, standalone
+   clarity, payoff or emotional change, visual support, and clean audio
+   boundaries.
+4. Select one coherent idea unless the user explicitly asks for a montage. A
+   shorter complete idea is better than a longer edit padded with weak material.
+5. Build the EDL around hook -> minimal context -> payoff -> ending, then
+   validate the speech boundaries and the vertical framing in a rendered
+   preview.
+
 ## Defaults
 
 - Use a vertical 9:16 timeline by default, usually `resolution: [1080, 1920]`.
-- Keep the edit focused on one complete idea, not a collection of weak moments.
-- Respect any duration the user provides. If no duration is provided, prefer a
-  compact cut that lands the idea cleanly instead of padding the timeline.
-- Produce editable artifacts first: EDL, SRT, and FCPXML. Render a preview when
-  framing, captions, or pacing need QA.
+- Treat the resolution as a delivery default, not a replacement for inspecting
+  the source crop.
+- Respect any duration the user provides. If no duration is provided, choose the
+  shortest cut that communicates the idea cleanly. Do not pad or remove the
+  payoff to hit an arbitrary length.
+- Produce editable artifacts first: EDL, SRT, and FCPXML. For an actual Shorts
+  edit, always render a preview and run `vtc qa-preview` before handoff.
 
 ## Story Shape
 
-- Start on the strongest hook: a clear claim, question, contradiction, visual
-  action, or payoff setup.
-- Remove preamble unless it is required for the viewer to understand the hook.
+- Start on the strongest hook: a clear claim, question, contradiction, reveal,
+  reaction, visual action, or payoff setup.
+- Keep only the context needed to understand the hook. Remove greetings, channel
+  intros, repeated setup, and outro material unless they are necessary or
+  explicitly requested.
 - Keep the cut self-contained. A viewer should understand the point without
   seeing the original source.
+- End after the idea lands: on a reaction, result, or concise closing line. Do
+  not end on a clipped word, unresolved setup, empty tail, or accidental source
+  transition.
 - Avoid unrelated montage beats unless the user explicitly requests a montage.
 - Prefer the cleanest complete delivery when the speaker restarts a thought.
 
 ## Pacing And Speech
 
-- Remove dead air, filler, false starts, duplicate retakes, and repeated points.
-- Keep complete words and self-contained phrases. Do not trade intelligibility
-  for speed.
+- Remove dead air, filler, false starts, duplicate retakes, and repeated points,
+  but preserve complete words, emotional breaths, and the pause before a
+  punchline or reveal.
+- Keep complete, self-contained phrases. Do not trade intelligibility for speed.
+- Change shot, crop, or B-roll only when it adds information, emphasis, or a
+  motivated cover for a jump cut. Fast pacing is not arbitrary cutting.
 - Run `vtc refine-audio-cuts --replace` before validation/export on speech
   edits so transcript timing errors do not clip audible word edges.
 - Use `vtc evaluate-edl --require-preview --strict-cut-warnings` before final
-  handoff when a preview exists.
+  handoff. If evaluation requests revision, update the EDL and rerun exports,
+  preview, QA, and evaluation.
 
 ## Vertical Framing
 
 - Choose an intentional crop per range for horizontal footage; do not rely on
   accidental center crop when the subject is off-center.
-- Keep faces, mouths, hands, important UI, and action inside the safe vertical
-  frame.
-- Avoid cropping subtitles into the subject's face or over critical gameplay UI.
+- Keep faces, mouths, hands, important UI, action, and captions inside the safe
+  vertical frame.
+- If a subject moves out of frame, split the range and apply a new transform or
+  use `visual_layers`; do not assume a static crop tracks the subject.
+- Avoid putting captions over the face, hands, critical gameplay UI, or the lower
+  interface area where publishing controls may appear.
 
 ## Gameplay With Facecam
 
@@ -62,23 +100,31 @@ of the vertical edit strategy:
 ## Captions
 
 - Always export SRT for Shorts workflows.
-- Prefer short caption chunks aligned to spoken phrases.
+- Prefer short caption chunks aligned to spoken phrases, usually no more than
+  two readable lines at a time.
 - Avoid long caption blocks that cover the subject or important UI.
 - If burned-in captions are requested later, use the SRT as the source of truth
   rather than manually retyping captions.
 
-## B-Roll
+## Audio And B-Roll
 
-- Use B-roll only when it clarifies the point, hides a jump cut, or provides
-  necessary visual evidence.
-- Avoid generic B-roll that competes with the spoken hook.
-- Keep B-roll timing tied to the sentence it supports.
+- Make the voice intelligible before adding music or effects. If voice and music
+  are baked together and the balance is poor, use `vtc separate-audio` as an
+  optional handoff step.
+- Use B-roll only when it clarifies the point, provides evidence, adds meaningful
+  visual rhythm, or hides a motivated jump cut.
+- Keep B-roll tied to the sentence or action it supports. Do not cover the
+  strongest line with generic filler.
 
 ## QA Checklist
 
-- The first seconds contain the hook, not setup fluff.
+- The opening contains the hook, not setup fluff.
 - The short contains one coherent idea and has a clear ending beat.
 - No words, sentence starts, or sentence endings are clipped.
-- Vertical framing keeps the subject/action visible throughout.
-- Captions are generated and do not create obvious readability problems.
-- Preview QA and final evaluation pass before handoff when preview was rendered.
+- Vertical framing keeps the subject, action, and critical UI visible throughout.
+- Captions are generated, readable, and do not cover important content.
+- Voice remains intelligible and B-roll supports rather than distracts from the
+  point.
+- `preview_report.json` has no duration, gap, overlap, transform, audio-only,
+  video-only, or short-clip failures.
+- Preview inspection and strict final evaluation pass before handoff.

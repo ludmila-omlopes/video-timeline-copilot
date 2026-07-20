@@ -64,7 +64,7 @@ it exists on disk, including ignored folders such as `.venv` if they are present
 
 `skills.sh` does not run post-install hooks from skills. If the helper CLI is
 not installed when the skill is first used, the skill tells the agent to ask
-before running the install commands already documented in `SKILL.md`. The skill
+before running the bootstrap commands documented in `install.md`. The skill
 also tells the agent to refresh PATH after installing `uv`/`vtc` and verify
 `vtc --help` in the current shell before continuing. The agent should only use a
 manual FFmpeg/Python fallback if the user refuses to install `vtc` or `uv` and
