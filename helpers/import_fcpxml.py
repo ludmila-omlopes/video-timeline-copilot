@@ -87,6 +87,15 @@ def asset_paths(root: ET.Element) -> dict[str, Path]:
     return assets
 
 
+def asset_starts(root: ET.Element) -> dict[str, float]:
+    starts = {}
+    for item in descendants(root, "asset"):
+        asset_id = item.attrib.get("id")
+        if asset_id:
+            starts[asset_id] = parse_fcpx_time(item.attrib.get("start", "0s"))
+    return starts
+
+
 def source_maps(base_edl: dict, footage_root: Path) -> tuple[dict[str, str], dict[str, str]]:
     source_id_by_path = {}
     source_path_by_id = {}
@@ -175,6 +184,7 @@ def import_project(
     project_index: int,
     base_edl: dict,
     asset_path_by_id: dict[str, Path],
+    asset_start_by_id: dict[str, float],
     source_id_by_path: dict[str, str],
     source_path_by_id: dict[str, str],
     dimensions_by_format: dict[str, list[int]],
@@ -259,7 +269,10 @@ def import_project(
             continue
 
         record_start = parse_fcpx_time(child.attrib["offset"]) if child.attrib.get("offset") else cursor
-        source_start = parse_fcpx_time(child.attrib.get("start", "0s"))
+        source_origin = asset_start_by_id.get(ref, 0.0)
+        source_start = (
+            parse_fcpx_time(child.attrib["start"]) - source_origin if child.attrib.get("start") else 0.0
+        )
         record_duration = parse_fcpx_time(duration_value)
         source_end = source_start + record_duration
         speed = None
@@ -271,8 +284,8 @@ def import_project(
                 last = time_points[-1]
                 time_start = parse_fcpx_time(first.attrib.get("time", "0s"))
                 time_end = parse_fcpx_time(last.attrib["time"])
-                value_start = parse_fcpx_time(first.attrib["value"])
-                value_end = parse_fcpx_time(last.attrib["value"])
+                value_start = parse_fcpx_time(first.attrib["value"]) - source_origin
+                value_end = parse_fcpx_time(last.attrib["value"]) - source_origin
                 timeline_delta = time_end - time_start
                 source_delta = value_end - value_start
                 if timeline_delta > 0 and source_delta > 0:
@@ -374,6 +387,7 @@ def import_fcpxml(
     root = ET.parse(fcpxml_path).getroot()
     source_id_by_path, source_path_by_id = source_maps(base_edl, footage_root)
     assets = asset_paths(root)
+    starts = asset_starts(root)
     dimensions = format_dimensions(root)
     reports = []
 
@@ -388,6 +402,7 @@ def import_fcpxml(
             project_index=project_index,
             base_edl=base_edl,
             asset_path_by_id=assets,
+            asset_start_by_id=starts,
             source_id_by_path=source_id_by_path,
             source_path_by_id=source_path_by_id,
             dimensions_by_format=dimensions,

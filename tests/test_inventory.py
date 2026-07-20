@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from helpers.inventory import iter_source_videos
+from helpers.inventory import ffprobe, iter_source_videos
 
 
 def touch(path: Path) -> None:
@@ -47,3 +47,29 @@ def test_iter_source_videos_allows_edit_dir_outside_root(tmp_path: Path) -> None
     edit_dir = tmp_path.parent / f"{tmp_path.name}_edit"
 
     assert iter_source_videos(tmp_path, edit_dir) == [source]
+
+
+def test_ffprobe_includes_embedded_start_timecode(monkeypatch, tmp_path: Path) -> None:
+    payload = {
+        "format": {"duration": "12.5"},
+        "streams": [
+            {
+                "codec_type": "video",
+                "width": 1920,
+                "height": 1080,
+                "avg_frame_rate": "30000/1001",
+            },
+            {"codec_type": "audio", "channels": 2, "sample_rate": "48000"},
+            {
+                "codec_type": "data",
+                "codec_tag_string": "tmcd",
+                "tags": {"timecode": "01:00:00:00"},
+            },
+        ],
+    }
+    monkeypatch.setattr("helpers.inventory.ffprobe_json", lambda path: payload)
+
+    item = ffprobe(tmp_path / "clip.mov")
+
+    assert item["start_timecode"] == "01:00:00:00"
+    assert item["timecode_rate"] == "30000/1001"

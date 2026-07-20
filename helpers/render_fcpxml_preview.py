@@ -84,7 +84,12 @@ def assets(root: ET.Element, formats: dict[str, tuple[int, int]]) -> dict[str, d
             dimensions = video_dimensions(path)
         if dimensions is None:
             raise ValueError(f"could not determine video dimensions for {path}")
-        records[asset_id] = {"path": path, "width": dimensions[0], "height": dimensions[1]}
+        records[asset_id] = {
+            "path": path,
+            "width": dimensions[0],
+            "height": dimensions[1],
+            "start": parse_fcpx_time(item.attrib.get("start", "0s")),
+        }
     return records
 
 
@@ -180,7 +185,11 @@ def _segment_args(
     for index, layer_clip in enumerate(layer_clips):
         ref = layer_clip.attrib["ref"]
         asset = asset_records[ref]
-        start = parse_fcpx_time(layer_clip.attrib.get("start", "0s"))
+        start = (
+            parse_fcpx_time(layer_clip.attrib["start"]) - float(asset.get("start", 0.0))
+            if layer_clip.attrib.get("start")
+            else 0.0
+        )
         media_inputs.extend(["-ss", f"{start:.6f}", "-t", f"{duration:.6f}", "-i", str(asset["path"])])
         crop_x, crop_y, crop_w, crop_h = _trimmed_source_rect(
             layer_clip,
