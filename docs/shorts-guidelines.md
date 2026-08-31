@@ -16,8 +16,8 @@ Before writing the EDL:
    `resolution: [1080, 1920]`, but preserve an explicitly requested format or
    duration.
 2. Read the packed transcript and visual context. When the crop, gameplay UI,
-   facecam, action, or visual payoff matters, analyze the video and inspect the
-   relevant sampled frames before choosing the moment.
+   facecam, action, source-baked text, or visual payoff matters, analyze the
+   video and inspect the relevant sampled frames before choosing the moment.
 3. Shortlist complete candidate ideas. Rank them by hook strength, standalone
    clarity, payoff or emotional change, visual support, and clean audio
    boundaries.
@@ -33,10 +33,27 @@ Before writing the EDL:
 - Treat the resolution as a delivery default, not a replacement for inspecting
   the source crop.
 - Respect any duration the user provides. If no duration is provided, choose the
-  shortest cut that communicates the idea cleanly. Do not pad or remove the
-  payoff to hit an arbitrary length.
+  duration that communicates the idea cleanly. Use roughly 60-90 seconds as the
+  preferred range when it fits naturally, not as a compulsory target. Do not
+  pad or remove context, development, or payoff to hit an arbitrary length.
 - Produce editable artifacts first: EDL, SRT, and FCPXML. For an actual Shorts
   edit, always render a preview and run `vtc qa-preview` before handoff.
+
+## Duration
+
+- Treat 180 seconds as the maximum duration for a YouTube Short, unless the
+  user names a different platform or delivery specification.
+- Prefer approximately 60-90 seconds when the complete idea works at that
+  length. This is an editorial sweet spot, not a technical limit or quota.
+- Keep a 90-120 second cut when it needs that time. Allow it to exceed 120
+  seconds, up to 180 seconds, when the hook, progression, and payoff remain
+  strong and every retained beat contributes.
+- Never accelerate speech excessively, remove necessary reasoning, cut the
+  payoff, or fragment one coherent idea merely to force the edit below 60 or
+  90 seconds. Likewise, never pad weak material to reach those durations.
+- When reporting or recommending duration, make clear that Shorts can be up to
+  three minutes and explain longer choices editorially rather than treating
+  anything over one minute as invalid.
 
 ## Story Shape
 
@@ -77,6 +94,26 @@ Before writing the EDL:
   use `visual_layers`; do not assume a static crop tracks the subject.
 - Avoid putting captions over the face, hands, critical gameplay UI, or the lower
   interface area where publishing controls may appear.
+
+### Source-Baked Text And Title Cards
+
+- Treat titles, lists, quotations, charts, labels, diagrams, subtitles, and any
+  other meaningful text already visible in the source as critical content.
+- Split the timeline range when the text appears and again when it disappears,
+  so its framing does not force the entire Short into a distant crop.
+- Prefer a tight crop around the complete text-bearing region when every word
+  remains readable. Otherwise fit the full horizontal composition inside the
+  vertical canvas and accept intentional black bars above and below it.
+- Never crop through a word, remove a list item, hide a diagram label, or leave
+  only part of a title visible. Keep visible side margins around the text.
+- With post-fill transforms, use a starting `zoom` near `0.316` to contain a
+  16:9 source in a 9:16 canvas. For other aspect ratios, start with
+  `(output_width / output_height) / (source_width / source_height)`, then adjust
+  from the rendered preview rather than trusting the calculation alone.
+- Keep generated captions outside the source text region. Resume the normal
+  face, gameplay, or action crop in a new range after the source text leaves.
+- Preserve the original source as the timeline asset; do not create a flattened
+  text-card clip merely to solve the framing unless the user explicitly asks.
 
 ## Gameplay With Facecam
 
@@ -122,6 +159,9 @@ of the vertical edit strategy:
 - The short contains one coherent idea and has a clear ending beat.
 - No words, sentence starts, or sentence endings are clipped.
 - Vertical framing keeps the subject, action, and critical UI visible throughout.
+- Every meaningful source-baked title, word, list item, and label is fully
+  visible and readable. Inspect the beginning, middle, and end of each
+  text-bearing range; intentional letterboxing is acceptable.
 - Captions are generated, readable, and do not cover important content.
 - Voice remains intelligible and B-roll supports rather than distracts from the
   point.
