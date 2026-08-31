@@ -2,7 +2,6 @@
 name: video-timeline-copilot
 description: "Use when editing local video footage with an AI agent: remove silence, create rough cuts or highlight edits, generate subtitles, export FCPXML, or build DaVinci Resolve timelines."
 license: MIT
-compatibility: "Requires Python 3.10+, uv for helper CLI installation, FFmpeg/ffprobe for media workflows, and optional faster-whisper/DaVinci Resolve Studio."
 metadata:
   author: ludmila-omlopes
   version: "0.1.0"
@@ -53,6 +52,16 @@ explicitly asks for a render.
 14. A Short must end on a deliberate beat. Do not let the source clip stop after
     the payoff, during a sentence, or on an accidental reaction unless that
     abruptness is clearly part of the requested style.
+15. Use the user's original media files as timeline sources by default. This
+    includes separately recorded audio. Do not reference generated proxies,
+    synchronized or transcoded intermediates, stems, previews, renders, or
+    flattened clips in the EDL, FCPXML, or Resolve project unless the user
+    explicitly requests or authorizes those derived files as sources.
+16. Treat meaningful text already visible in the source as protected visual
+    content in Shorts. Never let a vertical crop truncate a title, list, quote,
+    label, chart, subtitle, or other text needed to understand the scene. Split
+    the text-bearing interval into its own range and use a text-safe crop or a
+    contain/letterbox layout until the text disappears.
 
 ## CLI Invocation
 
@@ -117,6 +126,18 @@ Infer the footage root as follows:
 
 Create `edit/` automatically when needed.
 
+Treat the inventory of user-provided media as the authoritative source set for
+editable deliverables. Intermediates may be created under `edit/` for analysis,
+transcription, synchronization measurement, preview rendering, or other helper
+work, but keep them out of timeline source maps and exported asset resources.
+When original audio was recorded separately, reference the original video and
+original audio as separate assets and express synchronization through timeline
+offsets or retiming. Do not replace them with a generated muxed or synchronized
+clip. Preserve a mapping back to the originals whenever helper processing uses
+an intermediate. Only depart from this policy when the user explicitly asks to
+use a proxy, stem, transcode, render, or other derived file as an editable
+source.
+
 For simple requests, choose conservative defaults:
 
 - "remove silence" / "remove silent parts": keep speech ranges based on word
@@ -136,8 +157,11 @@ For simple requests, choose conservative defaults:
 - "Shorts", "YouTube Short", or vertical short-form edit: default to a 9:16
   timeline, usually `resolution: [1080, 1920]`, unless the user explicitly asks
   for another format. Select one self-contained idea and shape it as hook,
-  minimal context, payoff, and a deliberate ending. Do not pad to a target
-  duration or combine unrelated highlights just to fill the timeline.
+  minimal context, payoff, and a deliberate ending. Treat roughly 60-90 seconds
+  as an editorial sweet spot, not a hard limit. A YouTube Short may run up to
+  180 seconds; do not shorten strong material artificially, and allow a cut to
+  exceed 120 seconds when the complete idea remains engaging. Do not pad to a
+  target duration or combine unrelated highlights just to fill the timeline.
 - "highlight" / "best moments": prioritize clear, self-contained transcript
   phrases and avoid isolated filler words, false starts, and duplicate
   deliveries.
@@ -201,7 +225,9 @@ there is ambiguity.
 5. Read `edit/takes_packed.md`, any needed transcript JSON files, and sampled
    frames referenced by the visual context. For a Short, shortlist candidate
    ideas and check each for a hook, enough context to stand alone, a payoff, a
-   clean ending, and a usable vertical crop. If `takes_packed.md` says no cached
+   clean ending, and a usable vertical crop. Inspect title cards and every
+   interval containing meaningful source-baked text; a crop is not usable if it
+   removes any required word or character. If `takes_packed.md` says no cached
    video analysis exists, treat visual matching as limited and say so when
    framing or visual selection materially affects the result.
 
@@ -216,6 +242,9 @@ there is ambiguity.
    Then inspect/refine the generated EDL when the request requires more than
    mechanical silence removal. For a Shorts edit, prefer a deliberate manual
    selection of one idea over using a silence-cut draft as the final story.
+   Before continuing, verify that every source entry resolves to an original
+   user-provided media file unless the user explicitly authorized a derived
+   source.
 
 7. Refine speech cut boundaries from the source audio:
 
@@ -281,6 +310,23 @@ there is ambiguity.
    explicitly wants to replace the base EDL; the helper validates a temporary
    import and writes an `edl.bak.json` backup before replacing.
 
+   Before handoff, inspect the exported FCPXML asset resources. Confirm that
+   every video and audio asset points to an original user-provided file and that
+   separately recorded original audio remains a distinct editable source. Fail
+   the handoff check if a helper-created proxy, synchronized clip, transcode,
+   stem, preview, render, or flattened file appears as a source without the
+   user's explicit authorization.
+
+   For a Resolve handoff, do not treat original-media URLs alone as sufficient
+   proof. Keep timeline component names tied to the original filenames and
+   avoid per-range browser or source-clip names such as `P1_001`. When the
+   original master clips already exist in the Media Pool, tell the user to
+   disable **Automatically import source clips into media pool** in the XML
+   import dialog and select the bin containing those masters. After import,
+   verify that Resolve conformed the timeline to the existing original clips
+   and did not create one Media Pool item per edit. If it did, revise the XML
+   component structure or use the Resolve scripting backend before handoff.
+
 11. Render a preview and QA report for Shorts, and do so for any other edit when
     framing, captions, or technical timeline integrity is important:
 
@@ -298,8 +344,11 @@ there is ambiguity.
    ```
 
    Read `preview_report.json` before handoff. For Shorts, inspect the first
-   seconds, every crop change, caption placement, the payoff, and the final
-   frame, not only the automated checks. Treat
+   seconds, every crop change, caption placement, every source-baked text card,
+   the payoff, and the final frame, not only the automated checks. Check the
+   beginning, middle, and end of each text-bearing range and fail visual QA if
+   any meaningful word or character is clipped or unreadable. Intentional black
+   bars are acceptable when they preserve the full composition and text. Treat
    duration mismatches, transform coverage failures, audio-only/video-only
    regions, record gaps, record overlaps, and short clips as issues to correct.
    When FCPXML geometry itself is under inspection, render the exported XML
@@ -385,11 +434,17 @@ rules, and QA checklist. The load-bearing defaults:
 - Format: 9:16 vertical timeline, normally `resolution: [1080, 1920]`, unless
   the user explicitly requests another format.
 - Story: one self-contained idea shaped as hook -> minimal context -> payoff ->
-  deliberate ending. Choose the shortest cut that communicates it cleanly; do
-  not pad, and do not end on a clipped word or accidental beat.
+  deliberate ending. Aim near 60-90 seconds when the material naturally fits,
+  but allow up to 180 seconds and cuts over 120 seconds when the idea earns the
+  time. Do not shorten artificially, pad, or end on a clipped word or accidental
+  beat.
 - Gameplay with a facecam overlay: use the `gameplay-facecam` /
   `gameplay-screen` presets or `visual_layers`; never a generic center crop
   that repeats the facecam in a screen-focused scene.
+- Source-baked text: protect the complete text-bearing region. Split the range
+  when text appears or disappears; use a focused text-safe crop when it remains
+  readable, otherwise fit the full horizontal composition inside the vertical
+  canvas with intentional letterboxing.
 - QA and handoff: always export SRT, render the preview, run `vtc qa-preview`,
   inspect the hook, crop changes, captions, payoff, and ending, and gate
   handoff on `vtc evaluate-edl --require-preview --strict-cut-warnings`.
@@ -439,6 +494,16 @@ markers.
   ]
 }
 ```
+
+For a horizontal title card or text-heavy frame that would be clipped by the
+default vertical fill, give that interval its own range and reduce `zoom` until
+the complete text-bearing region fits with safe side margins. With the current
+post-fill transform semantics, a 16:9 source placed in a 9:16 canvas usually
+needs a starting `zoom` near `0.316` for a full-frame contain layout. Derive the
+general starting value as `(output_width / output_height) / (source_width /
+source_height)`, then verify it in the rendered preview and exported FCPXML.
+Black bars are preferable to cropped words. Resume the normal face/gameplay
+crop in a new range as soon as the text is gone.
 
 `speed` is an optional playback multiplier. Use `2.0` for 200% speed,
 `0.5` for 50% speed, and omit it for normal speed. A retimed range keeps the
