@@ -15,6 +15,10 @@ one. For DaVinci Resolve, optional integration can help import and inspect the
 timeline; manual import remains available. Support for other editors and
 individual FCPXML features depends on the editor.
 
+Give the agent access to one working folder containing the videos, audio, and
+other assets for the edit. Generated files go in its `edit/` subfolder. The
+agent checks whether Resolve is running and reports when it cannot verify that.
+
 ## What It Does
 
 - Inventories local video files into `edit/media_index.json`.

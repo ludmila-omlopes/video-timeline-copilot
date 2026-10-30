@@ -117,9 +117,22 @@ permission to bypass the helper workflow.
 
 ## User-Facing Request Handling
 
-When the user asks for a video edit from a folder, take ownership of the
-internal workflow. Do not ask the user to name `edit/edl.json` or specific helper
-commands.
+At the start of every video-editing session, tell the user which working folder
+will be used and that it needs to be accessible to the agent for reading and
+writing. Ask them to put all assets intended for the edit there, including
+video, audio, music, images, and other supplied material. If the user already
+identified an accessible folder and its assets, acknowledge it without asking
+again. If no folder is clear or it is not accessible, ask the user to choose
+and grant access to one; do not start the media workflow until it is accessible.
+Explain that generated outputs go in its `edit/` subdirectory. Do not move,
+copy, or modify original assets without authorization. Do not silently omit
+supplied assets: report missing or unsupported types and their impact. The
+video inventory indexes videos, not every possible asset type; inspect other
+supplied assets separately and do not claim the current EDL/exporters support
+an asset unless verified.
+
+Take ownership of the internal workflow. Do not ask the user to name
+`edit/edl.json` or specific helper commands.
 
 Identify the destination editor early, before choosing a handoff or offering
 editor integration. Use the user's request and available context first. If the
@@ -143,6 +156,18 @@ that import behavior depends on the editor.
 
 At handoff, distinguish what was generated, imported, checked for media links,
 and visually inspected. Report any unverified or failed steps explicitly.
+
+Early in each session, check whether DaVinci Resolve is running on the computer
+that holds the working media, using a read-only process or app inventory when
+available. Do this even if another editor is selected, but do not launch
+Resolve or offer its integration solely because it is running. A running process
+does not prove that scripting, MCP, or a project is connected; check those
+separately when needed. Do not use an MCP call that automatically launches
+Resolve as a running-state check. If the process state cannot be observed, say
+it is unknown rather than assuming it is open or closed. If Resolve is the
+destination and is not running, tell the user and, if they want live handoff,
+help them open it; continue independent preparation or manual FCPXML delivery
+as appropriate.
 
 Infer the footage root as follows:
 
