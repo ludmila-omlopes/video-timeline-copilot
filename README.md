@@ -10,6 +10,11 @@ external scripting is available, it can also build a native Resolve project.
 
 The primary output is an editable timeline, not a flattened MP4.
 
+Tell the agent which editor you use, or ask for FCPXML if you have not chosen
+one. For DaVinci Resolve, optional integration can help import and inspect the
+timeline; manual import remains available. Support for other editors and
+individual FCPXML features depends on the editor.
+
 ## What It Does
 
 - Inventories local video files into `edit/media_index.json`.
@@ -41,13 +46,31 @@ The primary output is an editable timeline, not a flattened MP4.
 
 ## Setup
 
-Install the agent skill with `skills.sh`:
+Choose the agents you use and inspect existing global installations first:
 
 ```bash
-npx skills add ludmila-omlopes/video-timeline-copilot -g -a codex
+npx skills list -g
 ```
 
-Then install the Python helper CLI with `uv`:
+For a fresh install, select agents in the interactive installer:
+
+```bash
+npx skills add ludmila-omlopes/video-timeline-copilot -g
+```
+
+Or explicitly select the agents you want, for example:
+
+```bash
+npx skills add ludmila-omlopes/video-timeline-copilot -g -a codex -a claude-code
+```
+
+Choose the recommended shared installation when offered. Review existing or
+conflicting installations before replacing them; shared locations may also be
+visible to other compatible agents. See [installation guidance](install.md)
+for selection, existing installations, and environment-specific details.
+
+Check `vtc --help` in the agent's environment. If it is missing, install the
+Python helper CLI once for that environment with `uv`:
 
 ```bash
 uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
@@ -70,19 +93,18 @@ also tells the agent to refresh PATH after installing `uv`/`vtc` and verify
 manual FFmpeg/Python fallback if the user refuses to install `vtc` or `uv` and
 still asks it to continue.
 
-If you prefer one command that installs the helper CLI and registers the skill
-for Claude and Codex, use the bundled installer:
+For the bundled installer, choose an agent explicitly. Avoid running it for
+targets already managed by `skills`:
 
 ```bash
 uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
-video-timeline-copilot install
+video-timeline-copilot install --agent codex
 ```
 
 Update later with:
 
 ```bash
-npx skills update video-timeline-copilot
-video-timeline-copilot update
+npx skills update
 ```
 
 After setup, point Codex at a footage folder:
@@ -463,6 +485,13 @@ sentences/segments are blockers. Use `--strict-cut-warnings` for final
 speech-edit handoff so any future cut-quality warning also blocks delivery.
 
 ## DaVinci Resolve
+
+If a compatible Resolve MCP is already connected to the agent, the skill can
+optionally use it to import and inspect a timeline in the open project. MCP
+availability and supported operations depend on the agent environment and
+Resolve setup; it is not required to use the skill. If you want to set one up,
+the agent can help using the optional [MCP setup guide](install.md#optional-resolve-mcp).
+See [SKILL.md](SKILL.md) for the handoff and verification workflow.
 
 `vtc export-fcpxml` is the default fallback for users who cannot use Resolve
 external scripting.
