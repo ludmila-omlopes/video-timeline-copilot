@@ -44,8 +44,9 @@ explicitly asks for a render.
     rerun exports/evaluation up to the configured attempt limit. For
     transcript-backed speech edits, use strict cut warnings so incomplete
     words, phrases, or sentence fragments block handoff.
-12. If Resolve external scripting is unavailable, stop after validated EDL, SRT,
-    and FCPXML generation and tell the user to import the FCPXML manually.
+12. Resolve integration is optional. When available, use a suitable Resolve MCP
+    or the scripting backend for the requested handoff; otherwise deliver the
+    validated EDL, SRT, and FCPXML and explain how to import manually.
 13. Repeated delivery, false starts, and self-corrections are not useful
     story beats. When adjacent transcript phrases restate the same idea, keep
     only the cleanest complete version and discard the earlier/incomplete take.
@@ -67,6 +68,11 @@ explicitly asks for a render.
 
 Use the `vtc` command when it is available on `PATH`. The recommended installer
 uses `uv tool install` so `vtc` should be installed as an isolated tool.
+One `vtc` installation can serve multiple agents that share an environment and
+PATH; check availability before installing. Skill registration is separate:
+when helping with setup, follow `install.md` to select only the user's agents,
+inspect existing installations, and avoid duplicating or replacing them. Treat
+Resolve MCP setup as a separate optional choice.
 
 Before running the workflow for the first time in an environment, bootstrap the
 helper CLI. Do not ask the user how to install `uv` or `vtc`; the commands are
@@ -114,6 +120,29 @@ permission to bypass the helper workflow.
 When the user asks for a video edit from a folder, take ownership of the
 internal workflow. Do not ask the user to name `edit/edl.json` or specific helper
 commands.
+
+Identify the destination editor early, before choosing a handoff or offering
+editor integration. Use the user's request and available context first. If the
+editor matters and remains unknown, ask one concise question such as "Which
+editor do you want to open the timeline in?" Continue independent preparation
+while waiting. Do not ask when the user already specified an editor or only
+requested an FCPXML. If the editor is undecided, deliver the FCPXML and explain
+that import behavior depends on the editor.
+
+- For DaVinci Resolve, offer optional integration to import and inspect the
+  timeline when the user wants to work in Resolve. Use an available compatible
+  MCP; if none is connected and the user wants one, follow the optional setup
+  in `install.md`. Do not make setup a condition of delivery.
+- For Final Cut Pro or another editor, deliver FCPXML and relevant import
+  guidance. Check that the specific editor and requested features support it;
+  do not promise compatibility or a native project without evidence. Do not
+  offer Resolve MCP setup for another editor unless the user requests it.
+- For an unknown or unsupported editor, explain the compatibility uncertainty
+  and offer the EDL, SRT, and FCPXML as available artifacts; do not claim a
+  successful import.
+
+At handoff, distinguish what was generated, imported, checked for media links,
+and visually inspected. Report any unverified or failed steps explicitly.
 
 Infer the footage root as follows:
 
@@ -379,7 +408,31 @@ there is ambiguity.
    next `--attempt` value. Stop after `--max-attempts`; if the status is still
    `blocked`, tell the user what failed instead of continuing to iterate.
 
-13. Build Resolve project when external scripting is available:
+13. For a user who wants to continue in Resolve, use the available integration.
+    If a Resolve MCP is already connected, inspect its tool descriptions and
+    connection/capabilities first. Confirm the intended project and timeline
+    from the request and readback before changing anything. A connection check
+    may launch Resolve; follow the MCP's own setup and error guidance. Do not
+    require or silently install an MCP: if none is connected, offer it as an
+    optional way to work in the open project, without blocking delivery. If the
+    user wants it installed, follow the optional MCP setup in `install.md`;
+    their request authorizes setup, subject to the environment's permissions.
+
+    When the MCP supports checked FCPXML import, use it for the generated XML
+    if importing into Resolve is requested. Prefer checked/dry-run operations,
+    use original media, and avoid sanitization or relinking that silently
+    removes or substitutes clips. When existing masters should be reused, select
+    the appropriate Media Pool bin and disable automatic source import if the
+    integration supports it; otherwise explain the manual import option. Read
+    back the imported timeline, its tracks and media links, and report offline
+    or mismatched items. Structural readback does not prove visual correctness:
+    inspect actual Resolve output when possible, especially framing and layers,
+    or state that visual verification is pending. If import or inspection is
+    unsupported or fails, report the limitation and use the scripting backend
+    where appropriate or provide manual import steps.
+
+    When external scripting is available, the CLI can also build a Resolve
+    project directly from the EDL:
 
    ```bash
    vtc resolve-env-check
@@ -395,7 +448,8 @@ there is ambiguity.
 
    By default, this creates uniquely named replacement timelines and leaves old
    timelines intact. Use `--replace-existing` only when the user explicitly
-   wants matching timeline names deleted and recreated.
+   wants matching timeline names deleted and recreated. Do not also build or
+   import a second timeline unless requested or needed to resolve a failure.
 
 ## Self-Evaluation Loop
 
@@ -607,6 +661,8 @@ inside the currently selected timeline. If `--replace-existing` is used and
 Resolve refuses to delete an active timeline, create a uniquely named timeline
 first or switch to another timeline before retrying.
 
-DaVinci Resolve Free may not expose external scripting. In that case, stop after
-validated EDL, SRT, and FCPXML generation and tell the user to import the FCPXML
-manually.
+DaVinci Resolve Free may not expose external scripting. Some MCP servers offer
+an in-app bridge depending on the Resolve version and setup; consult the
+available server's instructions rather than assuming it works. If no suitable
+integration is available, deliver validated EDL, SRT, and FCPXML and tell the
+user how to import the FCPXML manually.

@@ -2,15 +2,57 @@
 
 ## Recommended install
 
-Recommended:
+Choose the coding agents where you want this skill. The skill, the `vtc` CLI,
+and the optional Resolve MCP are separate installations. Do not select every
+detected agent unless you actually use it.
+
+First check for an existing installation before replacing or consolidating it:
 
 ```bash
-npx skills add ludmila-omlopes/video-timeline-copilot -g -a codex
-uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+npx skills list -g
 ```
 
-The `npx skills add` command installs the agent skill instructions. The `uv`
-command installs the `vtc` Python helper CLI.
+Review existing registrations and their locations. If the skill is already
+available to a chosen agent, keep it rather than installing another copy. If
+there are conflicting or older installations, inspect them before updating or
+removing anything; do not automatically delete or overwrite them.
+
+For a fresh installation, run this in an interactive terminal and select the
+agents you use when prompted:
+
+```bash
+npx skills add ludmila-omlopes/video-timeline-copilot -g
+```
+
+The installer may automatically target the current agent when run inside an
+agent session. To select exact targets, pass `-a` once per agent instead. For
+example, for Codex and Claude Code:
+
+```bash
+npx skills add ludmila-omlopes/video-timeline-copilot -g -a codex -a claude-code
+```
+
+Choose the recommended shared/symlink installation when offered. Agents using
+the shared directory may see the skill even if not explicitly selected; shared
+storage avoids duplicate copies but is not an access-control mechanism. Use
+the installer's agent-specific options if isolation is required. Do not run
+both this method and the bundled installer for the same targets. Check the
+result with `npx skills list -g`; report selected targets and actual paths.
+
+Check `vtc --help` in each agent's execution environment. If it already works,
+reuse it; otherwise install the CLI once for that environment:
+
+```bash
+uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+vtc --help
+```
+
+Agents on the same machine can share `vtc` when it is on each one's PATH;
+remote or isolated environments may need their own installation. Configure the
+Resolve MCP separately only if the user wants it: see Optional Resolve MCP
+below. Summarize the skill registrations, CLI availability, and MCP connection
+status separately. Claude Code and Codex are agent clients; ordinary chat apps
+may use different installation methods and may not have local command access.
 
 For local unpublished testing, avoid running `npx skills add .` from a checkout
 that contains `.venv`, `.pytest_cache`, or other ignored build/cache folders.
@@ -53,7 +95,7 @@ if (-not $uv) {
   throw "uv is installed or requested, but uv.exe was not found. Reopen PowerShell or install uv from https://docs.astral.sh/uv/"
 }
 
-& $uv tool install --force "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
+& $uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
 
 $toolDir = "$env:USERPROFILE\.local\bin"
 if (Test-Path $toolDir) {
@@ -92,19 +134,23 @@ This repo also ships a convenience installer:
 
 ```bash
 uv tool install "video-timeline-copilot[transcribe] @ git+https://github.com/ludmila-omlopes/video-timeline-copilot.git@main"
-video-timeline-copilot install
+video-timeline-copilot install --agent codex
 ```
 
 This installer:
 
-1. Installs the `vtc` Python CLI directly from GitHub with `uv tool install`.
-2. Registers the skill for Claude, Codex, and Open Agent Skills locations.
-3. Checks for `ffmpeg` and `ffprobe`.
+1. Registers the skill for the selected agent (`codex` above; use `claude` for
+   Claude Code). Its default is `all`, so specify `--agent` to limit targets.
+2. Checks for `ffmpeg` and `ffprobe`. The preceding `uv` command installs `vtc`.
+
+The bundled Codex target registers both shared and legacy locations. Use the
+recommended `skills` route when avoiding duplicate discovery is important, and
+do not combine both installers for the same targets.
 
 Update later with:
 
 ```bash
-video-timeline-copilot update
+video-timeline-copilot update --agent codex
 ```
 
 Run diagnostics with:
@@ -203,7 +249,40 @@ examples use Windows paths. Use `vtc export-fcpxml` as the portable fallback.
 
 ## DaVinci Resolve Setup
 
-Free Resolve users should use the FCPXML fallback:
+### Optional Resolve MCP
+
+If the user wants the agent to work in Resolve and no compatible MCP is
+connected, offer to set up [samuelgursky/davinci-resolve-mcp](https://github.com/samuelgursky/davinci-resolve-mcp).
+It is optional and separate from the `vtc` CLI. Do not install it unless the
+user wants it. First check the agent's available tools and existing MCP
+configuration to avoid a duplicate installation. Identify the user's MCP
+client, operating system, and Resolve edition/version from the environment
+where possible; ask only for details that cannot be determined.
+
+Follow the server's current [installation guide](https://github.com/samuelgursky/davinci-resolve-mcp/blob/main/docs/install.md)
+for prerequisites and client-specific setup. Its documented quick start is:
+
+```bash
+npx davinci-resolve-mcp setup
+```
+
+Run the installer when the user requests setup and the environment permits it;
+otherwise guide the user through running it. Select their actual MCP client,
+preserve existing configuration, and follow installer prompts. The installer
+may require Node.js, Python, and a local Resolve installation; use its current
+documentation for platform-specific requirements. For Studio, open Resolve
+and enable **Preferences > General > External scripting using > Local** as
+documented upstream. For the free edition, consult the upstream in-app bridge
+instructions and version limitations; do not assume every version supports it.
+
+Reload or restart the MCP client if necessary, then check that the Resolve MCP
+tools are discoverable and use a read-only connection or project-state check.
+A check may launch Resolve. Follow any tool-provided remediation on failure;
+report whether the server is installed, connected, and actually tested as
+separate facts. If tool discovery requires a new session, explain that and
+provide the next step. Do not claim success from installation alone.
+
+If setup is declined, unavailable, or fails, continue with FCPXML delivery:
 
 ```bash
 vtc export-fcpxml /path/to/footage/edit/edl.json
