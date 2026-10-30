@@ -263,7 +263,8 @@ vtc export-fcpxml .\my-video\edit\edl.json
 vtc import-fcpxml .\my-video\edit\Adjusted.fcpxml --base-edl .\my-video\edit\edl.json
 vtc render-preview .\my-video\edit\edl.json
 vtc qa-preview .\my-video\edit\edl.json
-vtc evaluate-edl .\my-video\edit\edl.json --require-preview --strict-cut-warnings
+vtc qa-transcript .\my-video\edit\edl.json
+vtc evaluate-edl .\my-video\edit\edl.json --require-preview --strict-cut-warnings --require-transcript-qa
 ```
 
 `vtc transcribe` defaults to `--device auto --compute-type auto`. On Windows,
@@ -318,7 +319,7 @@ transcripts are available. It writes kept ranges into `edit/edl.json`. Defaults
 are conservative:
 
 ```powershell
-vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit --style documentary
+vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 ```
 
 Useful controls:
@@ -330,8 +331,20 @@ Useful controls:
   0.8 seconds.
 - `--merge-gap 0.35`: merge nearby kept ranges.
 - `--max-word-gap 0.8`: split transcript word gaps longer than this many seconds.
-- `--style social|highlight|documentary|longform`: pacing preset.
+- `--style tight|social|highlight|documentary|longform`: pacing preset. When
+  omitted, the saved `cut_style` preference is used (default `documentary`).
 - `--no-word-snap`: skip transcript word-boundary adjustment.
+
+Save how tight you like your cuts once, and every later draft uses it:
+
+```powershell
+vtc preferences --set cut_style=tight
+vtc preferences --set padding=0.04
+vtc preferences
+```
+
+Preferences live in `%USERPROFILE%\.video-timeline-copilot\preferences.json`
+(or `$VIDEO_TIMELINE_COPILOT_HOME/preferences.json`).
 
 When `edit/transcripts/<source>.json` exists, the helper adjusts cut points to
 word timings so draft silence cuts do not trim through spoken words, and it
@@ -458,6 +471,25 @@ gaps, record overlaps, short clips, transform zoom/position coverage, and
 audio-only or video-only regions when a range or source stream appears to lack
 linked audio/video. Use `--preview`, `--report`, `--contact-sheet`, or
 `--timeline` to override the defaults.
+
+For speech edits, check what the edit actually says:
+
+```powershell
+vtc qa-transcript .\my-video\edit\edl.json
+```
+
+It transcribes each range of the edited timeline on its own (faster-whisper
+`small` by default) and flags a phrase that restarts a recent one, the usual
+sign of a retake left in the edit. Outputs:
+
+```text
+my-video/edit/qa/transcript_report.json
+my-video/edit/qa/transcript_readout.md
+```
+
+`vtc evaluate-edl` treats repeats across cuts as blockers, repeats inside one
+range as warnings, and a report older than the EDL as stale. Set
+`"allow_repeat": true` on the later range when a repetition is intentional.
 
 ## Self-Evaluation
 

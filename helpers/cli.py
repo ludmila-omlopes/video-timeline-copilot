@@ -19,6 +19,8 @@ COMMANDS = {
     "render-preview": ("helpers.render_preview", "Render an MP4 preview from an EDL"),
     "render-fcpxml-preview": ("helpers.render_fcpxml_preview", "Render an MP4 preview from an FCPXML file"),
     "qa-preview": ("helpers.qa_preview", "Run automated QA checks for a preview render"),
+    "qa-transcript": ("helpers.qa_transcript", "Re-transcribe the edit and flag repeated takes"),
+    "preferences": ("helpers.preferences", "Show or change saved editing preferences"),
     "evaluate-edl": ("helpers.evaluate_edl", "Evaluate an EDL before final handoff"),
     "resolve-env-check": ("helpers.resolve_env_check", "Check DaVinci Resolve scripting access"),
     "build-resolve-project": ("helpers.build_resolve_project", "Build a DaVinci Resolve project"),

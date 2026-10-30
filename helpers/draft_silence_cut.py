@@ -9,15 +9,25 @@ from pathlib import Path
 from helpers.common import read_json, safe_filename, write_json
 from helpers.inventory import ffprobe
 from helpers.media_tools import find_ffmpeg
+from helpers.preferences import cut_style as preferred_cut_style
+from helpers.preferences import load_preferences
 from helpers.validate_edl import MIN_CLIP_DURATION_SECONDS
 
 
 STYLE_DEFAULTS = {
+    "tight": {"padding": 0.05, "min_silence": 0.25, "min_segment": 0.8, "merge_gap": 0.1, "max_word_gap": 0.35},
     "social": {"padding": 0.12, "min_silence": 0.35, "min_segment": 0.8, "merge_gap": 0.18, "max_word_gap": 0.55},
     "documentary": {"padding": 0.25, "min_silence": 0.7, "min_segment": 0.8, "merge_gap": 0.35, "max_word_gap": 0.8},
     "highlight": {"padding": 0.18, "min_silence": 0.5, "min_segment": 0.8, "merge_gap": 0.25, "max_word_gap": 0.65},
     "longform": {"padding": 0.35, "min_silence": 0.9, "min_segment": 1.0, "merge_gap": 0.5, "max_word_gap": 1.2},
 }
+
+
+def first_number(*values) -> float:
+    for value in values:
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            return float(value)
+    raise ValueError("no numeric value provided")
 
 
 def parse_frame_rate(value: str | None) -> float:
@@ -342,7 +352,12 @@ def main() -> None:
     parser.add_argument("video", type=Path, help="Source video/audio file")
     parser.add_argument("--edit-dir", type=Path, default=None, help="Output edit directory")
     parser.add_argument("--out", type=Path, default=None, help="Output EDL path")
-    parser.add_argument("--style", choices=sorted(STYLE_DEFAULTS), default="documentary")
+    parser.add_argument(
+        "--style",
+        choices=sorted(STYLE_DEFAULTS),
+        default=None,
+        help="Pacing preset; defaults to the saved cut_style preference, else documentary",
+    )
     parser.add_argument("--noise", default="-35dB", help="FFmpeg silencedetect noise threshold, e.g. -35dB")
     parser.add_argument("--min-silence", type=float, default=None, help="Minimum silence duration in seconds")
     parser.add_argument("--padding", type=float, default=None, help="Pre/post roll kept around speech in seconds")
@@ -366,12 +381,20 @@ def main() -> None:
     default_edit_dir = video.parent.parent / "edit" if video.parent.name == "raw" else video.parent / "edit"
     edit_dir = (args.edit_dir or default_edit_dir).resolve()
     footage_root = edit_dir.parent.resolve()
+    preferences = load_preferences()
+    if args.style is None:
+        args.style = preferred_cut_style(preferences)
+        print(f"using cut style '{args.style}' (saved preference or default)")
+        pref_padding = preferences.get("padding")
+        pref_min_silence = preferences.get("min_silence")
+    else:
+        pref_padding = pref_min_silence = None
     defaults = STYLE_DEFAULTS[args.style]
     settings = {
         "detector": "ffmpeg silencedetect",
         "noise": args.noise,
-        "min_silence": args.min_silence if args.min_silence is not None else defaults["min_silence"],
-        "padding": args.padding if args.padding is not None else defaults["padding"],
+        "min_silence": first_number(args.min_silence, pref_min_silence, defaults["min_silence"]),
+        "padding": first_number(args.padding, pref_padding, defaults["padding"]),
         "min_segment": max(
             args.min_segment if args.min_segment is not None else defaults["min_segment"],
             MIN_CLIP_DURATION_SECONDS,
