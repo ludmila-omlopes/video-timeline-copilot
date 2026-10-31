@@ -40,6 +40,35 @@ A={}; for t=1,tl:GetTrackCount('audio') do for _,a in pairs(tl:GetItemListInTrac
 Expect `links` to equal the number of video items times the number of audio
 tracks that carry a matching clip.
 
+## Export The Open Timeline
+
+Use this to read the user's manual adjustments (trims, deleted clips) before
+continuing an edit. No file dialog is needed:
+
+```lua
+tl=resolve:GetProjectManager():GetCurrentProject():GetCurrentTimeline(); print(tl:GetName(), #tl:GetItemListInTrack('video',1)); print(tl:Export('D:\\path\\to\\edit\\current.fcpxml', resolve.EXPORT_FCPXML_1_8, resolve.EXPORT_NONE))
+```
+
+Resolve writes linked video and separately recorded audio as a `<clip>` that
+holds a `<video>` element plus a nested `<clip lane="1">` with an `<audio>`
+element. Read the clip `start` (source time) and `duration` from the outer
+`<clip>`.
+
+## Import A Timeline
+
+Import generated FCPXML through **File > Import > Timeline…** with
+**Automatically import source clips into media pool** and **Automatically set
+project settings** unchecked. That links the timeline to the masters already in
+the Media Pool.
+
+Do not use `MediaPool:ImportTimelineFromFile(path, {importSourceClips=false})`
+for this. In Resolve 21 Free it imported every clip as **Media Offline**
+instead of linking to the existing masters.
+
+Links between video and separately recorded audio do not survive a round trip.
+Re-importing Resolve's own exported `<clip>` + nested audio structure still
+gave unlinked clips. Run the link recipe after every import.
+
 ## Remove The Muted Camera-Audio Track
 
 Run this only after the inspect recipe confirms which track holds the camera
