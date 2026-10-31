@@ -349,6 +349,8 @@ applies the same zooms to an open timeline. Turn the step off with
 Resolve, see [docs/resolve-talking-head.md](docs/resolve-talking-head.md).
 To cover the talking head with B-roll on V2, see
 [docs/resolve-broll.md](docs/resolve-broll.md).
+For motion graphics that explain what is being said, see
+[docs/resolve-motion-hyperframes.md](docs/resolve-motion-hyperframes.md).
 
 Save how tight you like your cuts once, and every later draft uses it:
 

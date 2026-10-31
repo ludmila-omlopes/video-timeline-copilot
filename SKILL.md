@@ -266,6 +266,10 @@ switch the saved style (or padding) to match, so the next draft starts closer.
   Pre-render each shot with handles, place them on V2 from the Resolve
   Console, and move any timeline-level blur to the V1 clips so the B-roll
   stays sharp. Follow `docs/resolve-broll.md`.
+- Explainer motion over a talking head (lists from a study, diagrams of a
+  mechanism, comparisons): build one HyperFrames overlay per passage, timed to
+  the words on the edited timeline, render WebM with alpha and place it on V3.
+  Follow `docs/resolve-motion-hyperframes.md`.
 
 Treat `takes_packed.md` notes such as `possible repeated take` and
 `possible self-correction/restart` as warnings that the marked phrase probably
