@@ -252,6 +252,10 @@ switch the saved style (or padding) to match, so the next draft starts closer.
   reaction/commentary beats and `preset: gameplay-screen` for gameplay beats,
   with the same known facecam rectangle, so the screen-focused scene excludes
   the facecam instead of showing it again.
+- Talking head (one person speaking to a fixed camera) edited with jump cuts:
+  add small punch-ins so consecutive clips never share the same framing. Do it
+  by default unless the saved preference `punch_ins` is `false` or the user
+  declines, and mention it at handoff (see step 7).
 
 Treat `takes_packed.md` notes such as `possible repeated take` and
 `possible self-correction/restart` as warnings that the marked phrase probably
@@ -341,6 +345,31 @@ there is ambiguity.
    This expands cut starts/ends outward only when RMS activity is found close
    to the boundary. It is meant to catch transcript timestamps that end a word
    slightly before the audible phoneme finishes.
+
+   For talking-head edits with jump cuts, add punch-ins after the cuts are
+   final:
+
+   ```bash
+   vtc punch-ins /path/to/footage/edit/edl.json --focus 0.55,0.33
+   ```
+
+   `--focus` is the speaker's eye position, normalized from the top-left of
+   the frame. Read it from a sampled frame (`edit/video_frames/`) instead of
+   guessing; the zoom keeps that point in place. The helper cycles framing at
+   every cut (wide 1.0 and medium 1.12 by default). Short questions and
+   exclamations, or ranges marked `"emphasis": true`, get a closer 1.25. A
+   range that continues the previous one without a cut keeps its zoom. Ranges
+   with an existing transform or `visual_layers` are left alone unless
+   `--overwrite` is passed, and vertical timelines are skipped (Shorts use
+   their own framing). Keep punch-ins subtle: about 1.1-1.3, never so tight
+   that the head or hands touch the frame edge. Check headroom on the close
+   level in the preview or in Resolve.
+
+   To apply the same plan to a timeline already open in Resolve (for example
+   after the user adjusted cuts there), pass `--lua edit/punch_ins.lua` and run
+   that line in the Resolve Console. It refuses to run when the clip count
+   differs. Work on a duplicate of the user's timeline
+   (`Timeline:DuplicateTimeline`), never on the original.
 
    If the user needs to rebalance baked-in voice and background music, split the
    source audio into Demucs stems:

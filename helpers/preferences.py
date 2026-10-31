@@ -12,7 +12,8 @@ from helpers.common import read_json, write_json
 CUT_STYLES = ("tight", "social", "highlight", "documentary", "longform")
 DEFAULT_CUT_STYLE = "documentary"
 FLOAT_KEYS = {"padding", "min_silence"}
-KNOWN_KEYS = {"cut_style", *FLOAT_KEYS}
+BOOL_KEYS = {"punch_ins"}
+KNOWN_KEYS = {"cut_style", *FLOAT_KEYS, *BOOL_KEYS}
 
 
 def preferences_path() -> Path:
@@ -35,6 +36,11 @@ def parse_value(key: str, raw: str) -> Any:
         if raw not in CUT_STYLES:
             raise ValueError(f"cut_style must be one of {list(CUT_STYLES)}")
         return raw
+    if key in BOOL_KEYS:
+        lowered = raw.lower()
+        if lowered not in {"true", "false"}:
+            raise ValueError(f"{key} must be true or false")
+        return lowered == "true"
     value = float(raw)
     if value < 0:
         raise ValueError(f"{key} must not be negative")

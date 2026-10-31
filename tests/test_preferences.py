@@ -47,11 +47,12 @@ def test_set_and_unset_preferences(tmp_path: Path, monkeypatch) -> None:
     assert cut_style() == "tight"
 
     assert update_preferences(unset_keys=["padding"]) == {"cut_style": "tight"}
+    assert update_preferences(set_values=["punch_ins=false"])["punch_ins"] is False
 
 
 @pytest.mark.parametrize(
     "item",
-    ["cut_style=fast", "unknown=1", "padding=-0.1", "padding"],
+    ["cut_style=fast", "unknown=1", "padding=-0.1", "padding", "punch_ins=maybe"],
 )
 def test_invalid_preferences_are_rejected(tmp_path: Path, monkeypatch, item: str) -> None:
     monkeypatch.setenv("VIDEO_TIMELINE_COPILOT_HOME", str(tmp_path))

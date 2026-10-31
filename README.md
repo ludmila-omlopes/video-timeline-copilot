@@ -335,6 +335,18 @@ Useful controls:
   omitted, the saved `cut_style` preference is used (default `documentary`).
 - `--no-word-snap`: skip transcript word-boundary adjustment.
 
+For talking-head videos, add punch-ins so jump cuts change framing:
+
+```powershell
+vtc punch-ins .\my-video\edit\edl.json --focus 0.55,0.33
+```
+
+`--focus` is the speaker's eye position (normalized x,y). Framing alternates
+between 1.0 and 1.12 at each cut, with 1.25 for short questions and
+exclamations. Use `--lua punch_ins.lua` to get a Resolve Console line that
+applies the same zooms to an open timeline. Turn the step off with
+`vtc preferences --set punch_ins=false`.
+
 Save how tight you like your cuts once, and every later draft uses it:
 
 ```powershell

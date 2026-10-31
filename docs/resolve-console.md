@@ -69,6 +69,23 @@ Links between video and separately recorded audio do not survive a round trip.
 Re-importing Resolve's own exported `<clip>` + nested audio structure still
 gave unlinked clips. Run the link recipe after every import.
 
+## Punch-Ins On An Open Timeline
+
+`vtc punch-ins edl.json --lua punch_ins.lua` writes one console line that sets
+`ZoomX`, `ZoomY`, `Pan` and `Tilt` on each V1 clip, in timeline order. Duplicate
+the user's timeline first, make the duplicate current, then run the line:
+
+```lua
+p=resolve:GetProjectManager():GetCurrentProject(); z=p:GetCurrentTimeline():DuplicateTimeline('My timeline (zoom)'); p:SetCurrentTimeline(z)
+```
+
+Units seen in Resolve 21: `Pan`/`Tilt` are timeline pixels and negative `Tilt`
+moves the image down (verified). `Pan` is assumed to follow the same convention
+(negative moves left); check one clip before trusting it. Variables declared
+with `local` vanish after each console line, so use globals for objects that
+you reuse across lines. The scripting API has no keyframe calls, so animated
+(slow) zooms need the Inspector or Dynamic Zoom by hand.
+
 ## Remove The Muted Camera-Audio Track
 
 Run this only after the inspect recipe confirms which track holds the camera
