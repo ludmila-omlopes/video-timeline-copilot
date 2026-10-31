@@ -47,3 +47,6 @@ leans far out of it, that part softens too. With Resolve Studio, prefer a
 **Depth Map** effect.
 
 To remove the effect, disable or delete the timeline node.
+
+Before adding B-roll on V2, move this node to the V1 clips: a timeline node
+also blurs the B-roll. See `docs/resolve-broll.md`, step 5.

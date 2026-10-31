@@ -259,6 +259,13 @@ switch the saved style (or padding) to match, so the next draft starts closer.
   Resolve, also offer a light background blur (saved preference
   `background_blur`). It is a Resolve grade, not EDL data: apply it after
   import, following `docs/resolve-talking-head.md`.
+- B-roll over a talking head: cover sentences that name something visible
+  (a game, a scene, an artwork, a menu) and keep the speaker on screen for
+  opinions, asides and calls to action. Ask for the user's B-roll folder
+  first and put downloads in a dedicated folder inside the project.
+  Pre-render each shot with handles, place them on V2 from the Resolve
+  Console, and move any timeline-level blur to the V1 clips so the B-roll
+  stays sharp. Follow `docs/resolve-broll.md`.
 
 Treat `takes_packed.md` notes such as `possible repeated take` and
 `possible self-correction/restart` as warnings that the marked phrase probably
