@@ -48,6 +48,7 @@ def test_set_and_unset_preferences(tmp_path: Path, monkeypatch) -> None:
 
     assert update_preferences(unset_keys=["padding"]) == {"cut_style": "tight"}
     assert update_preferences(set_values=["punch_ins=false"])["punch_ins"] is False
+    assert update_preferences(set_values=["background_blur=true"])["background_blur"] is True
 
 
 @pytest.mark.parametrize(

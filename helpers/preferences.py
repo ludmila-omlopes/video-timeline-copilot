@@ -12,7 +12,7 @@ from helpers.common import read_json, write_json
 CUT_STYLES = ("tight", "social", "highlight", "documentary", "longform")
 DEFAULT_CUT_STYLE = "documentary"
 FLOAT_KEYS = {"padding", "min_silence"}
-BOOL_KEYS = {"punch_ins"}
+BOOL_KEYS = {"punch_ins", "background_blur"}
 KNOWN_KEYS = {"cut_style", *FLOAT_KEYS, *BOOL_KEYS}
 
 

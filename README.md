@@ -345,7 +345,8 @@ vtc punch-ins .\my-video\edit\edl.json --focus 0.55,0.33
 between 1.0 and 1.12 at each cut, with 1.25 for short questions and
 exclamations. Use `--lua punch_ins.lua` to get a Resolve Console line that
 applies the same zooms to an open timeline. Turn the step off with
-`vtc preferences --set punch_ins=false`.
+`vtc preferences --set punch_ins=false`. For a light background blur in
+Resolve, see [docs/resolve-talking-head.md](docs/resolve-talking-head.md).
 
 Save how tight you like your cuts once, and every later draft uses it:
 

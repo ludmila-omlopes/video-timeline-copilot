@@ -255,7 +255,10 @@ switch the saved style (or padding) to match, so the next draft starts closer.
 - Talking head (one person speaking to a fixed camera) edited with jump cuts:
   add small punch-ins so consecutive clips never share the same framing. Do it
   by default unless the saved preference `punch_ins` is `false` or the user
-  declines, and mention it at handoff (see step 7).
+  declines, and mention it at handoff (see step 7). When the destination is
+  Resolve, also offer a light background blur (saved preference
+  `background_blur`). It is a Resolve grade, not EDL data: apply it after
+  import, following `docs/resolve-talking-head.md`.
 
 Treat `takes_packed.md` notes such as `possible repeated take` and
 `possible self-correction/restart` as warnings that the marked phrase probably
