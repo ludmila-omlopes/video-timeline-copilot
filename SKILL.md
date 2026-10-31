@@ -169,6 +169,15 @@ destination and is not running, tell the user and, if they want live handoff,
 help them open it; continue independent preparation or manual FCPXML delivery
 as appropriate.
 
+When the user asks to edit a timeline that is already open in Resolve, export
+it first (**File > Export > Timeline**, FCPXML 1.8 `.fcpxml`, not the
+`.fcpxmld` bundle) and read its structure before planning: compound clips, the
+offsets and `timeMap` sync of separately recorded audio, muted camera audio,
+and cuts the user already made. Treat earlier manual cuts as editorial intent
+(they show which takes the user prefers), express new ranges against the
+original media, and deliver a new timeline. Never modify the user's timeline.
+See `docs/fcpxml-audio.md` for flattening compound clips.
+
 Infer the footage root as follows:
 
 1. If the current working directory contains `raw/`, use the current directory.
@@ -195,8 +204,8 @@ source.
 For simple requests, choose conservative defaults:
 
 - "remove silence" / "remove silent parts": keep speech ranges based on word
-  timestamp gaps, cut gaps longer than about 0.8 seconds, and add about 0.15
-  seconds of padding before and after speech ranges. Prefer
+  timestamp gaps, using the user's cut rhythm (see below) for how much air
+  stays around speech. Prefer
   `vtc draft-silence-cut` for the first deterministic pass when the user wants
   mechanical silence removal; it removes transcript word gaps even when the
   audio is not technically silent. Then run `vtc refine-audio-cuts --replace`
@@ -208,6 +217,25 @@ For simple requests, choose conservative defaults:
   longer configured minimum applies.
 - "short edit" without a duration: create a 10-30 second rough cut depending on
   source length.
+
+Cut rhythm: before drafting any edit that removes pauses from speech, know how
+tight the user wants the cuts. Run `vtc preferences` first. If a `cut_style` is
+saved, or the request already says how tight to cut, use it without asking.
+Otherwise ask one short question in plain language, with an example:
+
+| Option to offer | `cut_style` | Air kept around speech | Pauses removed from |
+|---|---|---|---|
+| Very tight, YouTube jump cuts | `tight` | ~0.05 s | 0.25 s |
+| Tight with a short breath | `social` | ~0.12 s | 0.35 s |
+| Natural | `documentary` | ~0.25 s | 0.7 s |
+| Relaxed, long-form | `longform` | ~0.35 s | 0.9 s |
+
+Save the answer with `vtc preferences --set cut_style=<style>` and tell the
+user it will be the default next time and can be changed. Fine-tune with
+`--set padding=<seconds>` or `--set min_silence=<seconds>` when the user wants
+something between presets. If nobody answers, use `documentary` and say so.
+When the user tightens or loosens many cuts by hand after delivery, offer to
+switch the saved style (or padding) to match, so the next draft starts closer.
 - "Shorts", "YouTube Short", or vertical short-form edit: default to a 9:16
   timeline, usually `resolution: [1080, 1920]`, unless the user explicitly asks
   for another format. Select one self-contained idea and shape it as hook,
@@ -224,6 +252,13 @@ For simple requests, choose conservative defaults:
   reaction/commentary beats and `preset: gameplay-screen` for gameplay beats,
   with the same known facecam rectangle, so the screen-focused scene excludes
   the facecam instead of showing it again.
+- Talking head (one person speaking to a fixed camera) edited with jump cuts:
+  add small punch-ins so consecutive clips never share the same framing. Do it
+  by default unless the saved preference `punch_ins` is `false` or the user
+  declines, and mention it at handoff (see step 7). When the destination is
+  Resolve, also offer a light background blur (saved preference
+  `background_blur`). It is a Resolve grade, not EDL data: apply it after
+  import, following `docs/resolve-talking-head.md`.
 
 Treat `takes_packed.md` notes such as `possible repeated take` and
 `possible self-correction/restart` as warnings that the marked phrase probably
@@ -290,8 +325,12 @@ there is ambiguity.
    removal, use the deterministic helper:
 
    ```bash
-   vtc draft-silence-cut /path/to/footage/raw/interview.mp4 --edit-dir /path/to/footage/edit --style documentary
+   vtc draft-silence-cut /path/to/footage/raw/interview.mp4 --edit-dir /path/to/footage/edit
    ```
+
+   Without `--style`, the helper uses the saved `cut_style` preference (and any
+   saved `padding`/`min_silence`). Pass `--style` only to override it for this
+   edit. Apply the same air and pause values when cuts are written by hand.
 
    Then inspect/refine the generated EDL when the request requires more than
    mechanical silence removal. For a Shorts edit, prefer a deliberate manual
@@ -309,6 +348,31 @@ there is ambiguity.
    This expands cut starts/ends outward only when RMS activity is found close
    to the boundary. It is meant to catch transcript timestamps that end a word
    slightly before the audible phoneme finishes.
+
+   For talking-head edits with jump cuts, add punch-ins after the cuts are
+   final:
+
+   ```bash
+   vtc punch-ins /path/to/footage/edit/edl.json --focus 0.55,0.33
+   ```
+
+   `--focus` is the speaker's eye position, normalized from the top-left of
+   the frame. Read it from a sampled frame (`edit/video_frames/`) instead of
+   guessing; the zoom keeps that point in place. The helper cycles framing at
+   every cut (wide 1.0 and medium 1.12 by default). Short questions and
+   exclamations, or ranges marked `"emphasis": true`, get a closer 1.25. A
+   range that continues the previous one without a cut keeps its zoom. Ranges
+   with an existing transform or `visual_layers` are left alone unless
+   `--overwrite` is passed, and vertical timelines are skipped (Shorts use
+   their own framing). Keep punch-ins subtle: about 1.1-1.3, never so tight
+   that the head or hands touch the frame edge. Check headroom on the close
+   level in the preview or in Resolve.
+
+   To apply the same plan to a timeline already open in Resolve (for example
+   after the user adjusted cuts there), pass `--lua edit/punch_ins.lua` and run
+   that line in the Resolve Console. It refuses to run when the clip count
+   differs. Work on a duplicate of the user's timeline
+   (`Timeline:DuplicateTimeline`), never on the original.
 
    If the user needs to rebalance baked-in voice and background music, split the
    source audio into Demucs stems:
@@ -376,7 +440,9 @@ there is ambiguity.
    avoid per-range browser or source-clip names such as `P1_001`. When the
    original master clips already exist in the Media Pool, tell the user to
    disable **Automatically import source clips into media pool** in the XML
-   import dialog and select the bin containing those masters. After import,
+   import dialog and select the bin containing those masters. Also disable
+   **Automatically set project settings** unless the user wants the project
+   settings changed. After import,
    verify that Resolve conformed the timeline to the existing original clips
    and did not create one Media Pool item per edit. If it did, revise the XML
    component structure or use the Resolve scripting backend before handoff.
@@ -415,11 +481,24 @@ there is ambiguity.
    Use this to compare the actual exported XML layout against the EDL preview
    when debugging Resolve crop/transform import behavior.
 
-12. Run self-evaluation before final handoff. For Shorts, require the preview
-    and strict cut warnings:
+   For speech edits, check what the timeline actually says:
 
    ```bash
-   vtc evaluate-edl /path/to/footage/edit/edl.json --require-preview --strict-cut-warnings --attempt 1 --max-attempts 3
+   vtc qa-transcript /path/to/footage/edit/edl.json
+   ```
+
+   It transcribes each range on its own and flags phrases that restart a
+   recent phrase, which is how retakes left in the edit look. Read
+   `edit/qa/transcript_readout.md` (one line per range, with record timecodes)
+   end to end, not only the flagged lines: it also shows clipped words and
+   fragments. Parallel rhetorical phrases can be flagged too; keep them by
+   setting `"allow_repeat": true` on the later range.
+
+12. Run self-evaluation before final handoff. For Shorts, require the preview
+    and strict cut warnings. For speech edits, also require transcript QA:
+
+   ```bash
+   vtc evaluate-edl /path/to/footage/edit/edl.json --require-preview --strict-cut-warnings --require-transcript-qa --attempt 1 --max-attempts 3
    ```
 
    Default output:
@@ -476,6 +555,13 @@ there is ambiguity.
    wants matching timeline names deleted and recreated. Do not also build or
    import a second timeline unless requested or needed to resolve a failure.
 
+   After importing a timeline whose speech comes from separately recorded
+   audio, link each video item to its audio before handoff. Without links,
+   trimming the video does not trim the audio. When the external recording
+   replaces the camera audio, also offer to remove the muted camera-audio
+   track. Use the MCP, the scripting backend, or the in-app Console recipes in
+   `docs/resolve-console.md`, then save the project.
+
 ## Self-Evaluation Loop
 
 Use `vtc evaluate-edl` as the final gate before handoff. It checks:
@@ -485,6 +571,9 @@ Use `vtc evaluate-edl` as the final gate before handoff. It checks:
   transcript-backed sentences/segments
 - preview QA when `edit/qa/preview_report.json` exists
 - duration, audio-only, and video-only preview failures
+- transcript QA when `edit/qa/transcript_report.json` exists: repeats across
+  cuts block, repeats inside one range warn, and a report older than the EDL
+  is stale
 - agent-review criteria for prompt alignment, pacing, and visual coherence
 
 The helper writes a JSON report with `status`, `blockers`, `warnings`,
@@ -584,6 +673,9 @@ source_height)`, then verify it in the rendered preview and exported FCPXML.
 Black bars are preferable to cropped words. Resume the normal face/gameplay
 crop in a new range as soon as the text is gone.
 
+`allow_repeat: true` marks a range whose opening intentionally repeats a recent
+phrase (anaphora, parallel questions) so `vtc qa-transcript` does not flag it.
+
 `speed` is an optional playback multiplier. Use `2.0` for 200% speed,
 `0.5` for 50% speed, and omit it for normal speed. A retimed range keeps the
 same `source_start`/`source_end` source span, but its timeline duration becomes
@@ -668,6 +760,18 @@ on the EDL. The helper does not choose new dialogue content; it only expands
 existing source_start/source_end boundaries outward when nearby source audio
 indicates that the transcript timestamp would clip the audible word edge.
 
+When transcript timestamps and source audio activity disagree, trust the audio.
+A larger Whisper model is not automatically better for timing: on one
+45-minute Portuguese recording, `medium` dropped words and stretched one word
+over 5 seconds where `small` stayed aligned with the audio.
+
+For speech edits, verify the content, not only the boundaries: run
+`vtc qa-transcript` after every EDL change and read its readout. Whisper often
+writes a phrase once when it hears it twice in a row, so retakes can be missing
+from the source transcript and only show up when each range is transcribed on
+its own. List ambiguous editorial removals for the user with approximate
+timecodes.
+
 ## Resolve Caveats
 
 DaVinci Resolve's scripting API is strongest at project creation, media import,
@@ -686,7 +790,10 @@ inside the currently selected timeline. If `--replace-existing` is used and
 Resolve refuses to delete an active timeline, create a uniquely named timeline
 first or switch to another timeline before retrying.
 
-DaVinci Resolve Free may not expose external scripting. Some MCP servers offer
+DaVinci Resolve Free may not expose external scripting. Its in-app Console
+(**Workspace > Console**, Lua) does run the scripting API against the open
+project; use it for small post-import fixes such as linking clips or removing a
+track (`docs/resolve-console.md`). Some MCP servers offer
 an in-app bridge depending on the Resolve version and setup; consult the
 available server's instructions rather than assuming it works. If no suitable
 integration is available, deliver validated EDL, SRT, and FCPXML and tell the

@@ -93,9 +93,12 @@ useful feedback.
 `helpers/qa_preview.py` compares that proxy against the EDL and writes technical
 QA output such as duration checks, audio-only/video-only regions, record gaps,
 record overlaps, short clips, and a contact sheet.
+`helpers/qa_transcript.py` transcribes each range of the edited timeline on its
+own and flags phrases that restart a recent phrase, so retakes left in the edit
+surface even when the source transcript merged them.
 
 `helpers/evaluate_edl.py` is the final handoff gate. It combines EDL validation,
-cut-quality warnings, preview QA, and explicit agent-review criteria into
+cut-quality warnings, preview QA, transcript QA, and explicit agent-review criteria into
 `edit/qa/evaluation_report.json`. Speech-boundary warnings are blockers at this
 stage so a technically valid EDL cannot pass with clipped words or partial
 phrases. The report tells the agent whether to proceed, revise the EDL and

@@ -7,6 +7,8 @@ import sys
 from helpers.common import read_json, write_json
 from helpers.export_fcpxml import default_fcpxml_path, fcpxml_integrity_issues
 from helpers.qa_preview import default_report_path
+from helpers.qa_transcript import BLOCKING_KINDS, edl_digest
+from helpers.qa_transcript import default_report_path as default_transcript_report_path
 from helpers.validate_edl import cut_quality_warnings, validate
 
 
@@ -55,6 +57,25 @@ def _qa_warnings(report: dict) -> list[str]:
     return warnings
 
 
+def _transcript_findings(report: dict, edl_path: Path) -> tuple[list[str], list[str]]:
+    if report.get("edl_sha256") != edl_digest(edl_path):
+        return ["transcript QA report is stale; rerun vtc qa-transcript after the last EDL change"], []
+    blockers = []
+    warnings = []
+    for finding in report.get("findings") or []:
+        later = finding.get("later") or {}
+        earlier = finding.get("earlier") or {}
+        message = (
+            f"{finding.get('kind')}: range {later.get('range_index')} \"{later.get('text')}\" "
+            f"repeats range {earlier.get('range_index')} \"{earlier.get('text')}\""
+        )
+        if finding.get("kind") in BLOCKING_KINDS:
+            blockers.append(message)
+        else:
+            warnings.append(message)
+    return blockers, warnings
+
+
 def _is_blocking_cut_warning(warning: str) -> bool:
     blocking_fragments = (
         "cuts inside word",
@@ -82,6 +103,11 @@ def _revision_guidance(blockers: list[str], warnings: list[str]) -> list[str]:
         guidance.append("Make record_start values contiguous so the timeline has no black/silent gaps or overlaps.")
     if any("shorter than the minimum" in item for item in blockers):
         guidance.append("Remove, extend, or merge clips shorter than the minimum duration.")
+    if any("transcript QA" in item for item in blockers):
+        guidance.append(
+            "Keep only the cleanest complete take of each repeated phrase, then rerun vtc qa-transcript; "
+            "set allow_repeat on the later range only when the repetition is intentional."
+        )
     if not guidance and blockers:
         guidance.append("Revise the EDL, rerun exports, then run preview QA and evaluation again.")
     return guidance
@@ -96,6 +122,8 @@ def evaluate_edl(
     max_attempts: int = DEFAULT_MAX_ATTEMPTS,
     require_preview: bool = False,
     strict_cut_warnings: bool = False,
+    transcript_report_path: Path | None = None,
+    require_transcript_qa: bool = False,
 ) -> dict:
     edl_path = edl_path.resolve()
     qa_report = (qa_report_path or default_report_path(edl_path)).resolve()
@@ -167,6 +195,19 @@ def evaluate_edl(
         criteria.append(_criterion("technical_preview", "not_checked", [f"missing QA report: {qa_report}"]))
         criteria.append(_criterion("audio_continuity", "not_checked"))
 
+    transcript_report = (transcript_report_path or default_transcript_report_path(edl_path)).resolve()
+    if transcript_report.exists():
+        transcript_blockers, transcript_warnings = _transcript_findings(read_json(transcript_report), edl_path)
+        blockers.extend(f"transcript QA failed: {item}" for item in transcript_blockers)
+        warnings.extend(f"transcript QA warning: {item}" for item in transcript_warnings)
+        status_name = "fail" if transcript_blockers else "warn" if transcript_warnings else "pass"
+        criteria.append(_criterion("content_repetition", status_name, transcript_blockers + transcript_warnings))
+    elif require_transcript_qa:
+        blockers.append(f"transcript QA report is required but missing: {transcript_report}")
+        criteria.append(_criterion("content_repetition", "fail", [f"missing transcript report: {transcript_report}"]))
+    else:
+        criteria.append(_criterion("content_repetition", "not_checked", [f"missing transcript report: {transcript_report}"]))
+
     criteria.extend(
         [
             _criterion("prompt_alignment", "agent_review_required"),
@@ -219,6 +260,17 @@ def main() -> None:
     parser.add_argument("--max-attempts", type=int, default=DEFAULT_MAX_ATTEMPTS, help="Maximum revision attempts")
     parser.add_argument("--require-preview", action="store_true", help="Fail when preview QA has not been run")
     parser.add_argument("--strict-cut-warnings", action="store_true", help="Treat cut-quality warnings as blockers")
+    parser.add_argument(
+        "--transcript-report",
+        type=Path,
+        default=None,
+        help="Transcript QA report path; defaults to edit/qa/transcript_report.json",
+    )
+    parser.add_argument(
+        "--require-transcript-qa",
+        action="store_true",
+        help="Fail when vtc qa-transcript has not been run for the current EDL",
+    )
     args = parser.parse_args()
 
     report = evaluate_edl(
@@ -229,6 +281,8 @@ def main() -> None:
         max_attempts=args.max_attempts,
         require_preview=args.require_preview,
         strict_cut_warnings=args.strict_cut_warnings,
+        transcript_report_path=args.transcript_report,
+        require_transcript_qa=args.require_transcript_qa,
     )
     print(f"evaluation {report['status']} -> {args.out or default_evaluation_path(args.edl.resolve())}")
     if report["blockers"]:

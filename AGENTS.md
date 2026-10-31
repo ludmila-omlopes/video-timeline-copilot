@@ -37,7 +37,10 @@ The full test suite runs in under a second on a warm local checkout. FFmpeg, FFp
 - `helpers/inventory.py` - indexes local video media into `edit/media_index.json`.
 - `helpers/media_tools.py` - locates FFmpeg/FFprobe and reads stream, duration, and dimension metadata.
 - `helpers/pack_transcripts.py` - packs transcript JSON files into `takes_packed.md`.
+- `helpers/preferences.py` - stores user editing preferences such as `cut_style` in the tool home.
+- `helpers/punch_ins.py` - adds alternating punch-in zoom transforms to talking-head ranges.
 - `helpers/qa_preview.py` - runs automated QA checks for an EDL preview render.
+- `helpers/qa_transcript.py` - re-transcribes the edited timeline per range and flags repeated takes left in the edit.
 - `helpers/render_preview.py` - renders an MP4 preview from a video-timeline-copilot EDL.
 - `helpers/resolve_env_check.py` - checks DaVinci Resolve scripting access.
 - `helpers/separate_audio.py` - separates source audio into Demucs stems.
