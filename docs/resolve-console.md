@@ -96,3 +96,31 @@ D={}; for _,a in pairs(tl:GetItemListInTrack('audio',1)) do if type(a)~='number'
 ```
 
 Links between the video and the remaining audio survive the deletion.
+
+## Fusion Titles (Call-Outs, Lower Thirds)
+
+Do not use `Timeline:InsertFusionTitleIntoTimeline(name)` on an edited
+timeline. In Resolve 21 it does a ripple insert on V1 near the playhead, so
+every clip after it moves by the title's length (5 s). Undo with **Ctrl+Z** in
+the main window, then export the timeline and compare it with an export from
+before.
+
+To place a title template (for example the user's own call-outs under
+**Titles** in the Effects library):
+
+1. Console: `tl:SetCurrentTimecode(tc)` to put the playhead on the word. The
+   timecode base is 60 for a 59.94 NDF timeline: frame `n` is
+   `string.format('%02d:%02d:%02d:%02d', h, m, s, n % 60)`.
+2. Drag the title from the Effects library onto an empty upper track and
+   drop it right at the playhead. Snapping puts the start on the playhead.
+3. Console: list the track's items and check `GetStart()`.
+
+Before typing in the Console, check that its input line is focused. If the
+Console window is hidden, keystrokes go to the main window, where letters are
+editing shortcuts (one stray key placed a media pool clip on V2).
+
+A reusable component saved as a `.drt` (for example a members list) imports
+with `mp:ImportTimelineFromFile(path, {importSourceClips=false})`. That makes
+the imported timeline current, so switch back with `pr:SetCurrentTimeline(tl)`.
+Then place its compound clip from the bin with `AppendToTimeline` on an upper
+track.
