@@ -32,7 +32,20 @@ spine clip, a word at source time `s` inside the clip's audio range
 list, not a transcript of an earlier cut: a few seconds of drift accumulate
 after each round of trims.
 
-## 3. Build One HyperFrames Project Per Overlay
+## 3. Match The Channel's Visual Identity
+
+Ask whether the channel already has motions from an earlier video and use them
+as the style reference before designing anything. Generic dark-glass cards read
+as off-brand. From the reference project, reuse the fonts and palette as they
+are (copy its `assets/fonts` and `assets/js/gsap.min.js`), the card and
+background treatments, and the motion vocabulary with its exact eases and
+durations. Typical moves are a card that drops in with a slight rotation, a
+pixel-font title typed letter by letter, a rule that draws in, words rising
+out of a mask, elastic stickers, a stamp that hits and shakes the card, and
+segmented meters with counting numbers. Render frames of the reference over a
+frame of the current footage to compare side by side.
+
+## 4. Build One HyperFrames Project Per Overlay
 
 - `npx hyperframes init <dir> --non-interactive --skip-skills --example blank`,
   then load the `/hyperframes` skill (`npx hyperframes skills update hyperframes`)
@@ -54,7 +67,7 @@ after each round of trims.
   `first_frame_empty` for overlays. Then `npx hyperframes snapshot --at ...`
   and composite the PNGs over a real frame of the speaker before rendering.
 
-## 4. Render With Alpha
+## 5. Render With Alpha
 
 ```bash
 npx hyperframes render --format webm --quality delivery --fps 60000/1001 --output overlay.webm
@@ -66,7 +79,7 @@ reads its transparency. Also verified in Resolve 21: QuickTime Animation
 alpha too but is far larger, which matters when files must be copied to
 another machine.
 
-## 5. Place On V3
+## 6. Place On V3
 
 Duplicate the timeline, import the overlays into their own bin and place them
 on a new track above the B-roll, with the same `AppendToTimeline` call as
