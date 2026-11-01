@@ -45,7 +45,24 @@ out of a mask, elastic stickers, a stamp that hits and shakes the card, and
 segmented meters with counting numbers. Render frames of the reference over a
 frame of the current footage to compare side by side.
 
-## 4. Build One HyperFrames Project Per Overlay
+## 4. Keep Overlays Small, Short And Nearly Wordless
+
+Feedback from the first real use: overlays that are large, long or wordy
+compete with the speaker's face.
+
+- One small card in a corner away from the face (about 450-650 px wide on a
+  1920 canvas). Diagrams go in a card too, not full screen.
+- Enter on the word and leave as soon as the idea is said, usually 2-10 s. A
+  longer passage becomes several short overlays (for example the number, then
+  the colors, then the result) instead of one card that keeps growing.
+- Almost no text: no titles or kickers, no captions repeating examples the
+  speaker lists, no labels on the diagram, no sources or "illustrative" notes,
+  no made-up numbers. Keep a word only when it is the concept itself, and
+  explain the rest with shapes, color and motion.
+- Don't reserve empty space for rows that appear later: collapse them
+  (`height: 0`) and grow the card when they arrive.
+
+## 5. Build One HyperFrames Project Per Overlay
 
 - `npx hyperframes init <dir> --non-interactive --skip-skills --example blank`,
   then load the `/hyperframes` skill (`npx hyperframes skills update hyperframes`)
@@ -60,14 +77,12 @@ frame of the current footage to compare side by side.
   edge at about 72 px and no wider than about 540 px so the speaker stays clear
   at every punch-in level. Grow the panel with `clip-path: inset()` as rows
   appear, instead of showing an empty box.
-- Full-screen diagrams (an opaque background that fades in and out) suit
-  mechanisms that need the whole frame; keep them under about 20 s.
 - Type at least 28 px for anything the viewer must read.
 - `npx hyperframes check --json` for errors; ignore `film_silent` and
   `first_frame_empty` for overlays. Then `npx hyperframes snapshot --at ...`
   and composite the PNGs over a real frame of the speaker before rendering.
 
-## 5. Render With Alpha
+## 6. Render With Alpha
 
 ```bash
 npx hyperframes render --format webm --quality delivery --fps 60000/1001 --output overlay.webm
@@ -94,7 +109,7 @@ still from the Console and export it:
 Seek, wait for the frame, then grab. Two grabs in the same Console line can
 capture the same frame.
 
-## 6. Place On V3
+## 7. Place On V3
 
 Duplicate the timeline, import the overlays into their own bin and place them
 on a new track above the B-roll, with the same `AppendToTimeline` call as
