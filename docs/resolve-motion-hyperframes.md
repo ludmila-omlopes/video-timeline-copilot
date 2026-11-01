@@ -71,13 +71,28 @@ frame of the current footage to compare side by side.
 
 ```bash
 npx hyperframes render --format webm --quality delivery --fps 60000/1001 --output overlay.webm
+ffmpeg -c:v libvpx-vp9 -i overlay.webm -c:v qtrle -pix_fmt argb overlay.mov
 ```
 
-VP9 WebM with alpha is small (a 10 s panel is about 0.3 MB) and Resolve 21 Free
-reads its transparency. Also verified in Resolve 21: QuickTime Animation
-(`qtrle`, `argb`) and PNG-in-MOV keep alpha. ProRes 4444 (`--format mov`) keeps
-alpha too but is far larger, which matters when files must be copied to
-another machine.
+Place the QuickTime Animation `.mov`, not the WebM. Resolve 21 Free does read
+VP9 alpha, but at full size the edges of anything semi-transparent (soft
+shadows, translucent panels, anti-aliased text) come out jagged and blocky. Hard
+edges hide this in a quick test, so check with the real overlay. Decoding the
+WebM with `libvpx-vp9` and re-encoding to `qtrle` (lossless RGBA) gives clean
+edges in Resolve. Force the `libvpx-vp9` decoder: the native `vp9` decoder drops
+the alpha. PNG-in-MOV also works. ProRes 4444 (`--format mov`) keeps alpha too
+but is the largest.
+
+The `.mov` files are big: about 100 MB for a 20 s side panel, and 700 MB for a
+full-screen diagram with lots of detail. Transcode them on the machine that
+runs Resolve instead of copying them over a network. Keep the WebM as the
+small master.
+
+To check an overlay at full resolution without exporting the video, grab a
+still from the Console and export it:
+`st=tl:GrabStill(); pr:GetGallery():GetCurrentStillAlbum():ExportStills({st}, dir, 'chk', 'png')`.
+Seek, wait for the frame, then grab. Two grabs in the same Console line can
+capture the same frame.
 
 ## 6. Place On V3
 
