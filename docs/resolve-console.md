@@ -124,3 +124,30 @@ with `mp:ImportTimelineFromFile(path, {importSourceClips=false})`. That makes
 the imported timeline current, so switch back with `pr:SetCurrentTimeline(tl)`.
 Then place its compound clip from the bin with `AppendToTimeline` on an upper
 track.
+
+### Resizing Or Moving A Title That Slides Off Screen
+
+A Transform added after the last node of a title (to make it smaller or move
+it) also moves the off-screen positions its elements slide to. An element that
+left the 1.0 frame edge before now stops inside the frame and stays visible
+after the animation ends. With pivot 0.5, `Size` S and `Center` (Cx, Cy), the
+visible frame edges in the title's own coordinates are
+`right = 0.5 + (1 - Cx) / S`, `top = 0.5 + (1 - Cy) / S` and
+`bottom = 0.5 - Cy / S`. Push every off-screen keyframe out by the same amount
+(for example `1.099 + (right - 1)` plus a small margin) and scale its Bezier
+handles about the rest value, so the ease keeps its shape. A crop to the frame
+before the Transform is no fix: the elements then vanish at a hard vertical
+line in the middle of the picture.
+
+On titles already on the timeline, change the splines through the Fusion API:
+`xf.Center:GetConnectedOutput():GetTool()` is the XYPath and its
+`X:GetConnectedOutput():GetTool()` the BezierSpline, then
+`spline:SetKeyFrames(table, true)`. In that table the `LH`/`RH` handles are
+offsets from their keyframe, not the absolute values that the `.setting` file
+stores; passing absolute values bends the curves (the element drifts while it
+should rest). Read back `tool.Center[frame]` at several frames and compare
+with the curve evaluated from the file before checking pictures. The Console
+has no `dofile` or `io`, so paste longer scripts as one line.
+
+The viewer and `GrabStill` can lag a seek by one frame when a Fusion title is
+slow to render. Wait about 6 s after each seek before grabbing.
