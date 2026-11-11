@@ -6,7 +6,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 import xml.etree.ElementTree as ET
 
-from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
+from helpers.common import ensure_within, is_image_path, read_json, resolve_relative, safe_filename
 from helpers.timing import range_effective_speed, range_playback_speed, range_source_duration, range_timeline_duration
 from helpers.timecode import timecode_to_seconds
 from helpers.transforms import (
@@ -249,6 +249,56 @@ def add_asset(
     ET.SubElement(asset, "media-rep", {"kind": "original-media", "src": file_url(path)})
 
 
+def add_still_asset(resources: ET.Element, asset_id: str, path: Path, format_id: str) -> None:
+    """A still image: video only, no intrinsic duration."""
+    asset = ET.SubElement(
+        resources,
+        "asset",
+        {
+            "id": asset_id,
+            "name": path.stem,
+            "start": "0s",
+            "duration": "0s",
+            "hasVideo": "1",
+            "format": format_id,
+            "videoSources": "1",
+        },
+    )
+    ET.SubElement(asset, "media-rep", {"kind": "original-media", "src": file_url(path)})
+
+
+def frame_rate_mismatches(edl_path: Path) -> list[str]:
+    """Sources whose native frame rate differs from the timeline's.
+
+    Mixed rates are legal, but some editors link such clips unreliably from
+    FCPXML. The cuts-only `vtc export-xml` states each file's own rate and is
+    the fallback when clips arrive offline.
+    """
+    edl = read_json(edl_path)
+    footage_root = edl_path.parent.parent
+    fps = fps_fraction(float(edl["fps"]))
+    media_by_path = load_media_index(edl_path.parent, footage_root)
+    seen: set[Path] = set()
+    mismatches = []
+    for timeline in edl.get("timelines") or []:
+        for source_path in (timeline.get("sources") or {}).values():
+            resolved = resolve_relative(source_path, footage_root).resolve()
+            if resolved in seen or is_image_path(resolved):
+                continue
+            seen.add(resolved)
+            raw = (media_by_path.get(resolved) or {}).get("avg_frame_rate")
+            if not raw or str(raw) in {"0/0", "0"}:
+                continue
+            try:
+                numerator, _, denominator = str(raw).partition("/")
+                source_rate = Fraction(int(numerator), int(denominator or 1))
+            except (ValueError, ZeroDivisionError):
+                continue
+            if abs(float(source_rate) - float(fps)) > 0.01:
+                mismatches.append(f"{resolved.name} is {float(source_rate):.3f} fps on a {float(fps):.3f} fps timeline")
+    return mismatches
+
+
 def media_timecode_origin(media_info: dict | None, fallback_fps: float) -> float:
     start_timecode = (media_info or {}).get("start_timecode")
     if not start_timecode:
@@ -282,6 +332,7 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
     resources = ET.SubElement(fcpxml, "resources")
 
     formats: dict[tuple[int, int], str] = {}
+    still_formats: dict[tuple[int, int], str] = {}
     asset_records: dict[Path, dict] = {}
     timeline_assets: dict[tuple[int, str], tuple[str, Path]] = {}
     asset_formats: dict[Path, str] = {}
@@ -290,7 +341,7 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
     def ensure_format(width: int, height: int) -> str:
         format_key = (int(width), int(height))
         if format_key not in formats:
-            format_id = f"r{len(formats) + 1}"
+            format_id = f"r{len(formats) + len(still_formats) + 1}"
             formats[format_key] = format_id
             ET.SubElement(
                 resources,
@@ -304,6 +355,20 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
                 },
             )
         return formats[format_key]
+
+    def ensure_still_format(width: int, height: int) -> str:
+        format_key = (int(width), int(height))
+        if format_key not in still_formats:
+            format_id = f"r{len(formats) + len(still_formats) + 1}"
+            while format_id in formats.values() or format_id in still_formats.values():
+                format_id = f"r{int(format_id[1:]) + 1}"
+            still_formats[format_key] = format_id
+            ET.SubElement(
+                resources,
+                "format",
+                {"id": format_id, "name": "FFVideoFormatRateUndefined", "width": str(width), "height": str(height)},
+            )
+        return still_formats[format_key]
 
     for timeline_index, timeline in enumerate(edl["timelines"]):
         width, height = timeline["resolution"]
@@ -350,6 +415,14 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
         except (TypeError, ValueError):
             media_width = 0
             media_height = 0
+        if is_image_path(resolved):
+            still_width, still_height = (media_width, media_height) if media_width > 0 and media_height > 0 else (0, 0)
+            if not still_width:
+                still_width, still_height = next(iter(formats))
+            asset_formats[resolved] = ensure_still_format(still_width, still_height)
+            asset_origins[resolved] = 0.0
+            add_still_asset(resources, str(record["id"]), resolved, asset_formats[resolved])
+            continue
         if media_width > 0 and media_height > 0:
             asset_format = ensure_format(media_width, media_height)
         asset_formats[resolved] = asset_format
@@ -406,6 +479,39 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
             visual_layers = item.get("visual_layers") or []
             primary_layer_index = primary_visual_layer_index(item)
             primary_layer = visual_layers[primary_layer_index] if primary_layer_index is not None else None
+            if is_image_path(asset_path):
+                still = ET.SubElement(
+                    spine,
+                    "video",
+                    {
+                        "name": str(clip_name),
+                        "ref": asset_id,
+                        "offset": fcpx_time(record_start, fps),
+                        "start": "0s",
+                        "duration": fcpx_time_from_frames(duration_frames, fps),
+                    },
+                )
+                if item.get("reason"):
+                    ET.SubElement(still, "note").text = str(item["reason"])
+                ET.SubElement(still, "adjust-conform", {"type": "fit"})
+                still_transform = resolve_transform(item.get("transform"), int(width), int(height))
+                if still_transform.zoom != 1.0 or still_transform.pan != 0.0 or still_transform.tilt != 0.0:
+                    ET.SubElement(
+                        still,
+                        "adjust-transform",
+                        {
+                            "position": f"{still_transform.pan:.3f} {still_transform.tilt:.3f}",
+                            "scale": f"{still_transform.zoom:.3f} {still_transform.zoom:.3f}",
+                        },
+                    )
+                still_metadata = ET.SubElement(still, "metadata")
+                ET.SubElement(
+                    still_metadata,
+                    "md",
+                    {"key": RANGE_ID_METADATA_KEY, "value": range_id_for(timeline_index, index, item)},
+                )
+                cursor = max(cursor, record_start + duration)
+                continue
             clip = ET.SubElement(
                 spine,
                 "asset-clip",
@@ -502,6 +608,12 @@ def build_fcpxml(edl_path: Path, *, resolve_crop_x_factor: float = DEFAULT_RESOL
                             "scale": f"{transform.zoom:.3f} {transform.zoom:.3f}",
                         },
                     )
+            if item.get("mute"):
+                if clip.attrib.get("srcEnable") == "audio":
+                    # The spine clip only carries sound for its layers; silence it instead.
+                    ET.SubElement(clip, "adjust-volume", {"amount": "-96dB"})
+                else:
+                    clip.set("srcEnable", "video")
             cursor = max(cursor, record_start + duration)
 
     ET.indent(fcpxml, space="  ")
@@ -514,7 +626,8 @@ def load_media_index(edit_dir: Path, footage_root: Path) -> dict[Path, dict]:
         return {}
 
     media_by_path = {}
-    for item in read_json(index_path).get("media", []):
+    index = read_json(index_path)
+    for item in [*index.get("media", []), *index.get("images", [])]:
         item_path = item.get("path")
         if not item_path:
             continue
@@ -579,7 +692,7 @@ def fcpxml_integrity_issues(edl_path: Path, fcpxml_path: Path | None = None) -> 
     for asset in root.findall("./resources/asset"):
         media_rep = asset.find("./media-rep")
         source_path = _path_from_file_url(media_rep.attrib.get("src", "")) if media_rep is not None else None
-        if source_path is None:
+        if source_path is None or is_image_path(source_path):
             continue
         required_end = required_source_ends.get(source_path)
         if required_end is None:
@@ -596,7 +709,8 @@ def fcpxml_integrity_issues(edl_path: Path, fcpxml_path: Path | None = None) -> 
         if timeline_index >= len(projects):
             issues.append(f"timeline {timeline_index + 1} has no matching FCPXML project")
             continue
-        primary_clips = projects[timeline_index].findall("./sequence/spine/asset-clip")
+        spine = projects[timeline_index].find("./sequence/spine")
+        primary_clips = [child for child in (spine if spine is not None else []) if child.tag in {"asset-clip", "video"}]
         ranges = sorted(timeline["ranges"], key=lambda item: float(item.get("record_start", 0)))
         for range_index, item in enumerate(ranges):
             expected_layers = item.get("visual_layers") or []
@@ -669,6 +783,14 @@ def main() -> None:
     out_path = args.out or default_fcpxml_path(edl_path, edl)
 
     result = write_fcpxml(edl_path, out_path, resolve_crop_x_factor=args.resolve_crop_x_factor)
+    mismatches = frame_rate_mismatches(edl_path)
+    for mismatch in mismatches:
+        print(f"WARNING: {mismatch}")
+    if mismatches:
+        print(
+            "WARNING: mixed frame rates can import offline or drift in some editors. If that happens, "
+            "re-export with `vtc export-xml` (cuts only) and import that file instead."
+        )
     print(f"FCPXML -> {result}")
 
 

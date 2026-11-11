@@ -5,7 +5,7 @@ import re
 from difflib import SequenceMatcher
 from pathlib import Path
 
-from helpers.common import read_json
+from helpers.common import read_json, safe_filename
 from helpers.video_analysis import analysis_to_lines
 
 
@@ -270,14 +270,46 @@ def repeated_delivery_note(
     return None
 
 
+def summary_lines(edit_dir: Path, source_stem: str) -> list[str]:
+    """The agent-written summary of what is on screen, when one has been saved."""
+    summary_path = edit_dir / "summaries" / f"{safe_filename(source_stem)}.md"
+    if not summary_path.exists():
+        return []
+    body = [line.rstrip() for line in summary_path.read_text(encoding="utf-8", errors="replace").splitlines()]
+    # Demote the summary's own headings so they nest under this source.
+    demoted = [f"##{line}" if line.startswith("#") else line for line in body if line.strip()]
+    return ["Summary (written from the contact sheet and dialogue):", *demoted]
+
+
+def contact_sheet_lines(edit_dir: Path, source_stem: str) -> list[str]:
+    folder = edit_dir / "contact_sheets"
+    if not folder.exists():
+        return []
+    prefix = f"{safe_filename(source_stem)}_"
+    sheets = sorted(folder.glob(f"{prefix}*.jpg"), key=lambda path: (not path.stem.endswith("_full"), path.name))
+    if not sheets:
+        return []
+    listed = ", ".join(f"contact_sheets/{sheet.name}" for sheet in sheets[:6])
+    more = f" (+{len(sheets) - 6} more)" if len(sheets) > 6 else ""
+    return [f"Contact sheets (time-stamped frame grids; open them to see the footage): {listed}{more}"]
+
+
 def video_analysis_lines(edit_dir: Path, source_stem: str) -> list[str]:
-    analysis_path = edit_dir / "video_analysis" / f"{source_stem}.json"
-    if not analysis_path.exists():
+    lines = summary_lines(edit_dir, source_stem)
+    lines.extend(contact_sheet_lines(edit_dir, source_stem))
+    candidates = [
+        edit_dir / "video_analysis" / f"{source_stem}.json",
+        edit_dir / "video_analysis" / f"{safe_filename(source_stem)}.json",
+    ]
+    analysis_path = next((path for path in candidates if path.exists()), None)
+    if analysis_path is None:
+        if lines:
+            return lines
         return [
             "No cached video analysis found; continue transcript-only or run "
             "`vtc analyze-video --edit-dir <edit-dir>` when visual events matter."
         ]
-    return analysis_to_lines(read_json(analysis_path))
+    return [*lines, *analysis_to_lines(read_json(analysis_path))]
 
 
 def build_packed_lines(
@@ -290,11 +322,18 @@ def build_packed_lines(
     restart_overlap_words: int = 2,
     restart_max_gap: float = 1.5,
     include_video_analysis: bool = True,
+    sources: list[str] | None = None,
 ) -> list[str]:
     transcripts_dir = edit_dir / "transcripts"
     files = sorted(transcripts_dir.glob("*.json"))
     if not files:
         raise FileNotFoundError(f"no transcript JSON files found in {transcripts_dir}")
+    if sources:
+        wanted = {Path(source).stem if Path(source).suffix else source for source in sources}
+        wanted |= {safe_filename(name) for name in wanted}
+        files = [path for path in files if path.stem in wanted or safe_filename(path.stem) in wanted]
+        if not files:
+            raise FileNotFoundError(f"none of the requested sources have a transcript in {transcripts_dir}")
 
     lines = ["# Packed transcripts", ""]
     for path in files:
@@ -345,6 +384,8 @@ def pack_transcripts(
     restart_overlap_words: int = 2,
     restart_max_gap: float = 1.5,
     include_video_analysis: bool = True,
+    sources: list[str] | None = None,
+    out_path: Path | None = None,
 ) -> Path:
     lines = build_packed_lines(
         edit_dir,
@@ -355,8 +396,9 @@ def pack_transcripts(
         restart_overlap_words=restart_overlap_words,
         restart_max_gap=restart_max_gap,
         include_video_analysis=include_video_analysis,
+        sources=sources,
     )
-    out = edit_dir / "takes_packed.md"
+    out = out_path or edit_dir / "takes_packed.md"
     out.write_text("\n".join(lines), encoding="utf-8")
     return out
 
@@ -375,6 +417,13 @@ def main() -> None:
         action="store_true",
         help="Do not include cached edit/video_analysis/*.json context in takes_packed.md",
     )
+    parser.add_argument(
+        "--sources",
+        nargs="+",
+        default=None,
+        help="Pack only these sources (stems or file names). Use with --out when the folder holds many clips.",
+    )
+    parser.add_argument("--out", type=Path, default=None, help="Output path; defaults to edit/takes_packed.md")
     args = parser.parse_args()
 
     edit_dir = args.edit_dir.resolve()
@@ -388,10 +437,12 @@ def main() -> None:
             restart_overlap_words=args.restart_overlap_words,
             restart_max_gap=args.restart_max_gap,
             include_video_analysis=not args.no_video_analysis,
+            sources=args.sources,
+            out_path=args.out.resolve() if args.out else None,
         )
     except FileNotFoundError as exc:
         raise SystemExit(str(exc)) from exc
-    transcript_count = len(list((edit_dir / "transcripts").glob("*.json")))
+    transcript_count = out.read_text(encoding="utf-8").count("\n## ")
     print(f"packed {transcript_count} transcript(s) -> {out}")
 
 

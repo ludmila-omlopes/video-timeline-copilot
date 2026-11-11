@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Any
 
+from datetime import date
+
 from helpers.common import read_json, write_json
 
 
@@ -13,7 +15,9 @@ CUT_STYLES = ("tight", "social", "highlight", "documentary", "longform")
 DEFAULT_CUT_STYLE = "documentary"
 FLOAT_KEYS = {"padding", "min_silence"}
 BOOL_KEYS = {"punch_ins", "background_blur"}
-KNOWN_KEYS = {"cut_style", *FLOAT_KEYS, *BOOL_KEYS}
+EDITORS = ("resolve", "premiere", "fcpx", "other")
+TEXT_KEYS = {"language", "whisper_model"}
+KNOWN_KEYS = {"cut_style", "editor", *FLOAT_KEYS, *BOOL_KEYS, *TEXT_KEYS}
 
 
 def preferences_path() -> Path:
@@ -36,6 +40,14 @@ def parse_value(key: str, raw: str) -> Any:
         if raw not in CUT_STYLES:
             raise ValueError(f"cut_style must be one of {list(CUT_STYLES)}")
         return raw
+    if key == "editor":
+        if raw not in EDITORS:
+            raise ValueError(f"editor must be one of {list(EDITORS)}")
+        return raw
+    if key in TEXT_KEYS:
+        if not raw:
+            raise ValueError(f"{key} must not be empty")
+        return raw
     if key in BOOL_KEYS:
         lowered = raw.lower()
         if lowered not in {"true", "false"}:
@@ -51,6 +63,8 @@ def update_preferences(
     *,
     set_values: list[str] | None = None,
     unset_keys: list[str] | None = None,
+    add_notes: list[str] | None = None,
+    forget_notes: list[int] | None = None,
     path: Path | None = None,
 ) -> dict[str, Any]:
     target = path or preferences_path()
@@ -63,6 +77,17 @@ def update_preferences(
         preferences[key] = parse_value(key, raw.strip())
     for key in unset_keys or []:
         preferences.pop(key.strip(), None)
+    notes = [item for item in preferences.get("notes") or [] if isinstance(item, dict)]
+    for index in sorted(set(forget_notes or []), reverse=True):
+        if not 1 <= index <= len(notes):
+            raise ValueError(f"no note number {index}; there are {len(notes)}")
+        notes.pop(index - 1)
+    for note in add_notes or []:
+        text = note.strip()
+        if text:
+            notes.append({"date": date.today().isoformat(), "text": text})
+    if notes or "notes" in preferences:
+        preferences["notes"] = notes
     write_json(target, preferences)
     return preferences
 
@@ -78,11 +103,20 @@ def main() -> None:
     )
     parser.add_argument("--set", dest="set_values", action="append", default=[], metavar="KEY=VALUE")
     parser.add_argument("--unset", dest="unset_keys", action="append", default=[], metavar="KEY")
+    parser.add_argument("--add-note", dest="add_notes", action="append", default=[], metavar="TEXT",
+                        help="Remember something about how this user likes to edit, across projects")
+    parser.add_argument("--forget-note", dest="forget_notes", action="append", default=[], type=int, metavar="NUMBER",
+                        help="Remove a saved note by its 1-based position")
     args = parser.parse_args()
 
     try:
-        if args.set_values or args.unset_keys:
-            preferences = update_preferences(set_values=args.set_values, unset_keys=args.unset_keys)
+        if args.set_values or args.unset_keys or args.add_notes or args.forget_notes:
+            preferences = update_preferences(
+                set_values=args.set_values,
+                unset_keys=args.unset_keys,
+                add_notes=args.add_notes,
+                forget_notes=args.forget_notes,
+            )
         else:
             preferences = load_preferences()
     except ValueError as exc:

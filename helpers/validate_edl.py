@@ -5,7 +5,7 @@ import re
 import sys
 from pathlib import Path
 
-from helpers.common import ensure_within, read_json, resolve_relative, seconds_to_frames
+from helpers.common import ensure_within, is_image_path, read_json, resolve_relative, seconds_to_frames
 from helpers.timing import range_playback_speed, range_timeline_duration
 
 
@@ -347,6 +347,14 @@ def validate(edl_path: Path) -> list[str]:
                 errors.append(f"{item_prefix}.record_duration must be greater than 0")
             if float(item.get("record_start", 0)) < 0:
                 errors.append(f"{item_prefix}.record_start must be >= 0")
+            if "mute" in item and not isinstance(item["mute"], bool):
+                errors.append(f"{item_prefix}.mute must be true or false")
+            if item.get("source") in sources and is_image_path(sources[item["source"]]):
+                # A still is held, not played: source_start/source_end only express how long.
+                if abs(speed - 1.0) > 1e-6:
+                    errors.append(f"{item_prefix} is a still image; speed does not apply")
+                if item.get("visual_layers"):
+                    errors.append(f"{item_prefix} is a still image; visual_layers are not supported on stills")
             visual_layers = item.get("visual_layers")
             if visual_layers is not None:
                 if not isinstance(visual_layers, list) or not visual_layers:

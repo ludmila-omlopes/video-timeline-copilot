@@ -4,7 +4,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from helpers.common import ensure_within, read_json, resolve_relative, write_json
+from helpers.common import ensure_within, is_image_path, read_json, resolve_relative, write_json
 from helpers.export_fcpxml import timeline_duration
 from helpers.media_tools import find_ffmpeg, media_duration, stream_types
 from helpers.render_preview import preview_path
@@ -71,6 +71,7 @@ def qa_preview(
 
     audio_only_regions = []
     video_only_regions = []
+    silent_by_design_regions = []
     source_stream_cache: dict[str, set[str]] = {}
     min_clip_duration = minimum_clip_duration(edl)
     timing_issues = timeline_timing_issues(timeline, float(edl["fps"]), min_clip_duration)
@@ -90,8 +91,9 @@ def qa_preview(
         source_id = item.get("source")
         source_path = ensure_within(resolve_relative(timeline["sources"][source_id], root), root)
         cache_key = str(source_path)
+        still = is_image_path(source_path)
         if cache_key not in source_stream_cache:
-            source_stream_cache[cache_key] = stream_types(source_path)
+            source_stream_cache[cache_key] = {"video"} if still else stream_types(source_path)
         types = source_stream_cache[cache_key]
         region = {
             "range_index": index,
@@ -104,7 +106,10 @@ def qa_preview(
         media_type = item.get("media_type", item.get("kind", "av"))
         if media_type in {"audio", "audio-only", "audio_only"} or "video" not in types:
             audio_only_regions.append(region)
-        if media_type in {"video", "video-only", "video_only"} or "audio" not in types:
+        if still or item.get("mute"):
+            # A held still or a muted clip is silent on purpose, not a missing stream.
+            silent_by_design_regions.append({**region, "reason": "still image" if still else "muted"})
+        elif media_type in {"video", "video-only", "video_only"} or "audio" not in types:
             video_only_regions.append(region)
         coverage_issue = transform_coverage_issue(timeline_index, index, item, width, height)
         if coverage_issue is not None:
@@ -138,6 +143,7 @@ def qa_preview(
         "checks": checks,
         "audio_only_regions": audio_only_regions,
         "video_only_regions": video_only_regions,
+        "silent_by_design_regions": silent_by_design_regions,
         "transform_coverage_issues": transform_coverage_issues,
         "gaps": gaps,
         "overlaps": overlaps,
