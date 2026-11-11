@@ -224,7 +224,8 @@ def test_xml_export_warns_about_framing_and_refuses_retimes(tmp_path: Path) -> N
         build_xml(retimed)
 
 
-def test_preview_holds_stills_with_silence_and_forces_stereo(tmp_path: Path) -> None:
+def test_preview_holds_stills_with_silence_and_forces_stereo(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr("helpers.render_preview.find_ffmpeg", lambda: "ffmpeg")
     args = _segment_args(tmp_path / "title.png", 0.0, 2.0, 2.0, 1920, 1080, 30.0, tmp_path / "out.mp4", {"video"}, None, True)
 
     assert args[args.index("-loop") + 1] == "1"
