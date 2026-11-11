@@ -46,7 +46,8 @@ def find_candidates(name: str, size: int | None, search_root: Path, edit_dir: Pa
             directories[:] = []
             continue
         if name in files:
-            candidate = current / name
+            # Report the path as the user's folder spells it, not its resolved alias.
+            candidate = Path(folder) / name
             if size is None or candidate.stat().st_size == size:
                 matches.append(candidate)
     return sorted(matches)
