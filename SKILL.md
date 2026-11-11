@@ -24,8 +24,6 @@ explicitly asks for a render.
 
 ## Principles
 
-## Principles
-
 1. The primary artifact is an editable timeline.
 2. The LLM writes edit intent as `edl.json`; helper scripts execute it.
 3. Transcripts are cached per source and reused.
