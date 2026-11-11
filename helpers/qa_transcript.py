@@ -78,7 +78,7 @@ def render_timeline_audio(
         if source not in has_audio:
             has_audio[source] = decoder is not None or "audio" in stream_types(source)
         begin = len(audio)
-        if has_audio[source]:
+        if has_audio[source] and not item.get("mute"):
             audio.extend(decode(source, float(item["source_start"]), float(item["source_end"])))
         spans.append(
             {

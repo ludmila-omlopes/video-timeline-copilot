@@ -28,10 +28,41 @@ people, objects, or prompt-specific visual events. This keeps the normal
 workflow local and cheap while still giving agents a structured place to combine
 visual context with transcript context.
 
+`helpers/contact_sheet.py` builds `edit/contact_sheets/<source>_full.jpg`: one
+grid of evenly spaced frames, each stamped with its source time, plus a JSON
+sidecar listing the exact time of every tile. Long sources also get one sheet
+per ten-minute window, and any range can be sheeted on demand to zoom into a
+cut point. Frames are grabbed one seek at a time, so variable-frame-rate
+recordings sample evenly; when the local FFmpeg has no `drawtext`, the sheet is
+built unlabelled and the sidecar carries the times.
+
+The agent turns each contact sheet plus the source's dialogue into
+`edit/summaries/<source>.md`. Summaries are model-written on purpose: they are
+the judgment layer the FFmpeg signals cannot provide. `helpers/status.py`
+reports which sources have a transcript, contact sheet, and summary, gates
+creative cuts on that readiness, and writes `edit/library.md`, the one-page
+index an agent reads first.
+
+### 2b. Project Context Layer
+
+`helpers/project_context.py` keeps `edit/project.json`: the footage summary,
+the language, the destination editor, notes about this project, and a glossary
+of names with the ways they get misheard. `helpers/preferences.py` keeps the
+cross-project equivalent in the tool home. The glossary feeds transcription as
+an initial prompt and feeds `helpers/fix_transcript.py` as replacement pairs.
+
 ### 3. Transcript Layer
 
 `helpers/transcribe.py` uses faster-whisper with word timestamps and VAD. Its
 output is cached in `edit/transcripts/`.
+
+`helpers/fix_transcript.py` corrects misheard names. It matches whole spoken
+words, and it never moves a timestamp: a same-length correction keeps each word
+slot, and any other correction collapses the run into a single word spanning
+the same start and end. The first untouched transcript is kept under
+`edit/transcripts/originals/`. `helpers/dialogue.py` and
+`helpers/find_phrase.py` are cheap reading surfaces over the same cache: clean
+dialogue text, and word-level in/out times for a phrase across every source.
 
 `helpers/pack_transcripts.py` turns raw transcript JSON into
 `edit/takes_packed.md`, which is the primary surface the agent reads when
@@ -87,6 +118,11 @@ those warnings into hard schema errors.
 Validation is deliberately separate from Resolve so offline workflows still get
 useful feedback.
 
+`helpers/verify_media.py` runs before export. It compares each indexed source
+with the size recorded at inventory time, so a file that was moved shows as
+missing with a relink suggestion, and a file that was replaced shows as changed
+with stale analysis. Relinking only happens on an explicit flag.
+
 ### 6. Evaluation Layer
 
 `helpers/render_preview.py` can render an MP4 proxy directly from `edl.json`.
@@ -129,8 +165,20 @@ timelines or delete and recreate matching timelines when requested. This keeps
 iterative agent edits possible while Resolve is open, without treating the
 currently selected timeline as mutable source of truth.
 
+`helpers/export_xml.py` writes FCP7 XML (xmeml) for Premiere Pro and as a
+fallback for Resolve when mixed frame rates import offline from FCPXML. It is
+cuts-only by design: it states each file's own frame rate, links video to
+audio, and carries stills, muted clips, and markers, but it reports rather than
+approximates transforms and layers, and refuses retimed ranges.
+
+Still images are ordinary sources whose range holds for
+`source_end - source_start` seconds; `mute` drops a clip's own sound. Both are
+understood by validation, the FCPXML and XML exporters, the preview renderer,
+and preview QA (as "silent by design"). The Resolve scripting backend refuses
+them, like layers and retimes.
+
 Existing backends that read the same EDL: `export_fcpxml.py`,
-`update_fcpxml.py`, `import_fcpxml.py`, `build_resolve_project.py`, and
+`update_fcpxml.py`, `import_fcpxml.py`, `export_xml.py`, `build_resolve_project.py`, and
 `update_resolve_timeline.py`.
 
 Future backend candidates should read the same EDL:
@@ -138,6 +186,18 @@ Future backend candidates should read the same EDL:
 - `export_otio.py`
 - `export_edl.py`
 - `build_premiere_project.py`
+
+## Agent Guides
+
+`SKILL.md` is a short map. The working instructions live in
+`helpers/guides/*.md`, are packaged with the CLI, and are printed by
+`vtc guide <name>`. Shipping them with the code means an agent can never follow
+instructions newer or older than the commands it has installed, and the skill
+works the same whether it was installed as a folder or as a single `SKILL.md`.
+
+`helpers/backup.py` zips the edit folder, minus files the helpers can rebuild,
+into the tool home, and restores into a new sibling folder so current work is
+never overwritten.
 
 ## Design Rule
 

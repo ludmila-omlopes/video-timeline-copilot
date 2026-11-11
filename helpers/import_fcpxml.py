@@ -243,9 +243,10 @@ def import_project(
                 f"timeline {project_name!r} contains a {gap_duration:.3f}s gap; EDL validation may fail"
             )
             continue
-        if child_name != "asset-clip":
+        if child_name not in {"asset-clip", "video"}:
             report["warnings"].append(f"skipped unsupported FCPXML element in spine: {child_name}")
             continue
+        is_still = child_name == "video"
 
         ref = child.attrib.get("ref")
         duration_value = child.attrib.get("duration")
@@ -274,6 +275,9 @@ def import_project(
             parse_fcpx_time(child.attrib["start"]) - source_origin if child.attrib.get("start") else 0.0
         )
         record_duration = parse_fcpx_time(duration_value)
+        if is_still:
+            # Stills are held; editors write arbitrary start values for them.
+            source_start = 0.0
         source_end = source_start + record_duration
         speed = None
         time_map = first_child(child, "timeMap")

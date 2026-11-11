@@ -34,7 +34,7 @@ Observed with DaVinci Resolve 21 Free:
 - Connected `lane="-1"` audio `asset-clip` children import onto their own audio
   track, **unlinked** from the video. Trimming the video in the Cut or Edit page
   does not trim the audio. Link the pairs after import with
-  `docs/resolve-console.md` (or an MCP or the scripting backend) and say so at
+  the `resolve-console` guide (or an MCP or the scripting backend) and say so at
   handoff.
 - The camera's embedded audio still imports as a linked track, even at
   `adjust-volume amount="-100"`. When the external recording replaces it, offer

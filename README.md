@@ -21,10 +21,19 @@ agent checks whether Resolve is running and reports when it cannot verify that.
 
 ## What It Does
 
-- Inventories local video files into `edit/media_index.json`.
+- Inventories local video files and still images into `edit/media_index.json`,
+  and reports which sources are analyzed and ready to cut (`vtc status`).
 - Analyzes visual video signals into `edit/video_analysis/` using local FFmpeg
   scene/freeze detection and sampled frame references.
-- Transcribes footage with `faster-whisper` and word timestamps.
+- Builds time-stamped contact sheets (`vtc contact-sheet`) so the agent can see
+  each source, zoom into any range, and write a per-source summary under
+  `edit/summaries/`. `edit/library.md` indexes every source with its overview.
+- Transcribes footage with `faster-whisper` and word timestamps, in one batch
+  run primed with the project's names and terms.
+- Keeps a project glossary and context (`vtc context`) and corrects misheard
+  names in transcripts without moving any word timing (`vtc fix-transcript`).
+- Finds where a line is spoken across every transcript with word-level times
+  (`vtc find-phrase`), for selects and script-based edits.
 - Packs transcripts and cached visual signals into `edit/takes_packed.md`, the
   main reading surface for the agent.
 - Flags likely repeated takes in the packed transcript so Codex can keep the
@@ -41,6 +50,13 @@ agent checks whether Resolve is running and reports when it cannot verify that.
 - Exports `.srt` subtitles.
 - Exports `.fcpxml` for manual import into Resolve Free, Final Cut Pro, or
   other tools that support FCPXML.
+- Exports cuts-only FCP7 XML (`vtc export-xml`) for Premiere Pro and as a
+  fallback when mixed frame rates import offline.
+- Supports still images (title cards, photos) and muted clips in the EDL.
+- Checks that sources are present and unchanged before export
+  (`vtc verify-media`) and backs up the edit folder (`vtc backup`).
+- Plans story-shaped cuts with the user, builds them beat by beat, and delivers
+  them with editorial notes (see the `cuts` guide).
 - Renders optional MP4 previews directly from `edl.json` and writes automated
   QA reports with contact sheets before handoff.
 - Evaluates validation, cut quality, preview QA, and agent-review criteria so
@@ -251,20 +267,43 @@ the expected `media_index.json`, transcript JSON, `takes_packed.md`, and
 
 ```powershell
 vtc inventory .\my-video --edit-dir .\my-video\edit
+vtc context --edit-dir .\my-video\edit --set language=pt --add-term "Hollow Knight"
+vtc transcribe --all --edit-dir .\my-video\edit
+vtc contact-sheet --edit-dir .\my-video\edit
 vtc analyze-video .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
-vtc transcribe .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
+vtc fix-transcript --edit-dir .\my-video\edit --glossary
+vtc status --edit-dir .\my-video\edit
 vtc pack-transcripts --edit-dir .\my-video\edit
 vtc draft-silence-cut .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc refine-audio-cuts .\my-video\edit\edl.json --replace
 vtc separate-audio .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit
 vtc validate-edl .\my-video\edit\edl.json
 vtc export-srt .\my-video\edit\edl.json
+vtc verify-media --edit-dir .\my-video\edit --edl .\my-video\edit\edl.json
 vtc export-fcpxml .\my-video\edit\edl.json
+vtc export-xml .\my-video\edit\edl.json
 vtc import-fcpxml .\my-video\edit\Adjusted.fcpxml --base-edl .\my-video\edit\edl.json
 vtc render-preview .\my-video\edit\edl.json
 vtc qa-preview .\my-video\edit\edl.json
 vtc qa-transcript .\my-video\edit\edl.json
 vtc evaluate-edl .\my-video\edit\edl.json --require-preview --strict-cut-warnings --require-transcript-qa
+vtc backup --edit-dir .\my-video\edit --label first-cut
+```
+
+`vtc guide` lists the agent guides that ship with the CLI (`session`,
+`footage`, `cuts`, `edl`, `cut-craft`, `shorts`, `handoff`, and the Resolve
+recipes); `vtc guide <name>` prints one. `SKILL.md` is the short map that sends
+an agent to the right guide, so the instructions always match the installed
+commands.
+
+Other helpers for larger folders:
+
+```powershell
+vtc dialogue interview.mp4 --edit-dir .\my-video\edit --timestamps
+vtc dialogue --all --edit-dir .\my-video\edit
+vtc find-phrase "the line I am looking for" --edit-dir .\my-video\edit
+vtc contact-sheet .\my-video\raw\interview.mp4 --edit-dir .\my-video\edit --start 02:00 --end 02:30
+vtc preferences --set editor=resolve --add-note "Never open on a greeting"
 ```
 
 `vtc transcribe` defaults to `--device auto --compute-type auto`. On Windows,
@@ -346,7 +385,7 @@ between 1.0 and 1.12 at each cut, with 1.25 for short questions and
 exclamations. Use `--lua punch_ins.lua` to get a Resolve Console line that
 applies the same zooms to an open timeline. Turn the step off with
 `vtc preferences --set punch_ins=false`. For a light background blur in
-Resolve, see [docs/resolve-talking-head.md](docs/resolve-talking-head.md).
+Resolve, see [helpers/guides/resolve-talking-head.md](helpers/guides/resolve-talking-head.md).
 
 Save how tight you like your cuts once, and every later draft uses it:
 
@@ -616,13 +655,15 @@ The model reasons about the edit. Deterministic helpers execute the workflow.
 
 ```text
 local media
-  -> media inventory
-  -> FFmpeg video signal analysis
-  -> faster-whisper transcript cache
+  -> media inventory (videos and stills) and readiness status
+  -> faster-whisper transcript cache, primed and corrected by the glossary
+  -> contact sheets and FFmpeg video signal analysis
+  -> agent-written summary per source, indexed in library.md
   -> packed transcript and visual context for Codex
+  -> kind of cut settled, plan approved for story-shaped cuts
   -> agent-authored edl.json
   -> validation
-  -> SRT / FCPXML / preview QA
+  -> media check, SRT / FCPXML / FCP7 XML / preview QA
   -> self-evaluation loop
   -> optional Resolve project
 ```
@@ -672,8 +713,8 @@ ranges yet; use the FCPXML path for edits with speed changes.
 See [SKILL.md](SKILL.md) for Codex usage rules, [install.md](install.md) for
 setup details, [docs/architecture.md](docs/architecture.md) for internals,
 [docs/audio-analysis.md](docs/audio-analysis.md) for silence-cut behavior, and
-[docs/shorts-guidelines.md](docs/shorts-guidelines.md) for Shorts-specific
-editing guidance. Use [docs/e2e-test.md](docs/e2e-test.md) for release
+[helpers/guides/](helpers/guides/) for the agent guides, including
+[shorts](helpers/guides/shorts.md) for Shorts-specific editing guidance. Use [docs/e2e-test.md](docs/e2e-test.md) for release
 validation.
 
 ## Contact

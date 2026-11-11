@@ -29,6 +29,10 @@ def build_srt_for_timeline(edl: dict, timeline: dict, edit_dir: Path, out_path: 
         source_end = float(item["source_end"])
         duration = range_timeline_duration(item)
         record_start = float(item.get("record_start", cursor))
+        if item.get("mute"):
+            # Muted speech is not heard, so it gets no caption.
+            cursor = max(cursor, record_start + duration)
+            continue
         transcript_path = edit_dir / "transcripts" / f"{Path(timeline['sources'][source_id]).stem}.json"
 
         cache_key = str(transcript_path)

@@ -4,10 +4,18 @@ import sys
 
 
 COMMANDS = {
-    "inventory": ("helpers.inventory", "Index local video media"),
+    "guide": ("helpers.guide", "Print the agent guide for one part of the workflow"),
+    "inventory": ("helpers.inventory", "Index local video and image media"),
+    "status": ("helpers.status", "Show which sources are analyzed and ready to cut"),
+    "context": ("helpers.project_context", "Show or change the project context and glossary"),
+    "verify-media": ("helpers.verify_media", "Check that source media is present and unchanged"),
     "analyze-video": ("helpers.video_analysis", "Analyze visual video signals"),
-    "transcribe": ("helpers.transcribe", "Transcribe one video with faster-whisper"),
+    "contact-sheet": ("helpers.contact_sheet", "Build time-stamped contact sheets of sources or ranges"),
+    "transcribe": ("helpers.transcribe", "Transcribe videos with faster-whisper"),
+    "fix-transcript": ("helpers.fix_transcript", "Correct misheard names without touching word timing"),
     "pack-transcripts": ("helpers.pack_transcripts", "Pack transcript JSON files"),
+    "dialogue": ("helpers.dialogue", "Print clean dialogue or write the full transcript"),
+    "find-phrase": ("helpers.find_phrase", "Find where a phrase is spoken, with word timings"),
     "draft-silence-cut": ("helpers.draft_silence_cut", "Create a draft EDL by removing detected silence"),
     "refine-audio-cuts": ("helpers.audio_refine", "Refine EDL cut boundaries using source audio"),
     "separate-audio": ("helpers.separate_audio", "Separate source audio into Demucs stems"),
@@ -15,6 +23,7 @@ COMMANDS = {
     "export-srt": ("helpers.export_srt", "Generate SRT subtitles from an EDL"),
     "export-fcpxml": ("helpers.export_fcpxml", "Export FCPXML from an EDL"),
     "update-fcpxml": ("helpers.update_fcpxml", "Update an existing FCPXML file in place"),
+    "export-xml": ("helpers.export_xml", "Export cuts-only FCP7 XML for Premiere or as a Resolve fallback"),
     "import-fcpxml": ("helpers.import_fcpxml", "Import an edited FCPXML back into an EDL"),
     "render-preview": ("helpers.render_preview", "Render an MP4 preview from an EDL"),
     "render-fcpxml-preview": ("helpers.render_fcpxml_preview", "Render an MP4 preview from an FCPXML file"),
@@ -26,7 +35,17 @@ COMMANDS = {
     "resolve-env-check": ("helpers.resolve_env_check", "Check DaVinci Resolve scripting access"),
     "build-resolve-project": ("helpers.build_resolve_project", "Build a DaVinci Resolve project"),
     "update-resolve-timeline": ("helpers.update_resolve_timeline", "Create or replace timelines in an existing Resolve project"),
+    "backup": ("helpers.backup", "Back up or restore the edit folder"),
 }
+
+
+def tool_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("video-timeline-copilot")
+    except Exception:
+        return "unknown"
 
 
 def print_help() -> None:
@@ -41,6 +60,10 @@ def print_help() -> None:
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] in {"-h", "--help"}:
         print_help()
+        return
+
+    if sys.argv[1] in {"-V", "--version"}:
+        print(f"vtc {tool_version()}")
         return
 
     command = sys.argv[1]

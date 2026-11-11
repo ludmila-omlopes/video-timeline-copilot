@@ -7,7 +7,7 @@ from pathlib import Path
 import subprocess
 import sys
 
-from helpers.common import ensure_within, read_json, resolve_relative, write_json
+from helpers.common import ensure_within, is_image_path, read_json, resolve_relative, write_json
 from helpers.media_tools import find_ffmpeg, media_duration
 from helpers.timing import range_playback_speed, range_timeline_duration
 from helpers.validate_edl import validate
@@ -211,6 +211,9 @@ def refine_edl_audio_cuts(
             source_id = item.get("source")
             source = resolved_sources.get(source_id)
             if source is None:
+                continue
+            if is_image_path(source) or item.get("mute"):
+                # Stills and muted clips have no audible boundary to protect.
                 continue
             if source not in duration_cache:
                 duration_cache[source] = float(media_duration(source) or 0.0)

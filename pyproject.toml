@@ -1,6 +1,6 @@
 [project]
 name = "video-timeline-copilot"
-version = "0.1.0"
+version = "0.2.0"
 description = "Transcript-first AI timeline generation with DaVinci Resolve project output"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -30,6 +30,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["helpers"]
+
+[tool.setuptools.package-data]
+helpers = ["guides/*.md"]
 
 [project.scripts]
 vtc = "helpers.cli:main"

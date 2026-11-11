@@ -4,9 +4,44 @@ import json
 from pathlib import Path
 import re
 from typing import Any
+import unicodedata
 
 
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".m4v", ".mkv", ".avi", ".webm"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg"}
+
+
+def is_image_path(path: str | Path) -> bool:
+    return Path(str(path)).suffix.lower() in IMAGE_EXTENSIONS
+
+
+def fold_text(text: str) -> str:
+    """Lowercase, strip accents and punctuation so spoken phrases compare loosely."""
+    decomposed = unicodedata.normalize("NFKD", text or "")
+    stripped = "".join(char for char in decomposed if not unicodedata.combining(char))
+    stripped = re.sub(r"[^\w\s]", " ", stripped.lower())
+    return re.sub(r"\s+", " ", stripped).strip()
+
+
+def clock(seconds: float) -> str:
+    """Format seconds as HH:MM:SS for labels and file names."""
+    total = max(0, int(seconds))
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}"
+
+
+def parse_clock(value: str | float | int) -> float:
+    """Parse seconds, MM:SS, or HH:MM:SS(.fraction) into seconds."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    parts = str(value).strip().split(":")
+    if not 1 <= len(parts) <= 3:
+        raise ValueError(f"unsupported time value: {value!r}")
+    seconds = 0.0
+    for part in parts:
+        seconds = seconds * 60 + float(part)
+    return seconds
 
 
 def read_json(path: Path) -> dict[str, Any]:

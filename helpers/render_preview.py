@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from helpers.common import ensure_within, read_json, resolve_relative, safe_filename
+from helpers.common import ensure_within, is_image_path, read_json, resolve_relative, safe_filename
 from helpers.export_fcpxml import timeline_duration
 from helpers.media_tools import find_ffmpeg, stream_types, video_dimensions
 from helpers.timing import range_source_duration, range_timeline_duration
@@ -94,8 +94,26 @@ def _segment_args(
     out_path: Path,
     types: set[str],
     transform: dict | None = None,
+    still: bool = False,
 ) -> list[str]:
-    if "video" in types and "audio" in types:
+    if still:
+        # Hold the image for the whole range and pair it with silence.
+        media_inputs = [
+            "-loop",
+            "1",
+            "-framerate",
+            f"{fps}",
+            "-t",
+            f"{record_duration:.6f}",
+            "-i",
+            str(source),
+            "-f",
+            "lavfi",
+            "-i",
+            f"anullsrc=channel_layout=stereo:sample_rate=48000:d={record_duration:.6f}",
+        ]
+        maps = ["-map", "0:v:0", "-map", "1:a:0"]
+    elif "video" in types and "audio" in types:
         media_inputs = [
             "-ss",
             f"{start:.6f}",
@@ -158,6 +176,10 @@ def _segment_args(
         "23",
         "-c:a",
         "aac",
+        "-ac",
+        "2",
+        "-ar",
+        "48000",
         "-b:a",
         "160k",
         "-movflags",
@@ -358,6 +380,10 @@ def _layered_segment_args(
         "23",
         "-c:a",
         "aac",
+        "-ac",
+        "2",
+        "-ar",
+        "48000",
         "-b:a",
         "160k",
         "-movflags",
@@ -391,6 +417,8 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
     }
     source_dimensions = {}
     for source_path in source_paths.values():
+        if is_image_path(source_path):
+            continue
         dimensions = video_dimensions(source_path)
         if dimensions:
             source_dimensions[source_path] = dimensions
@@ -418,10 +446,13 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
                 raise ValueError(f"range {index + 1} duration must be positive")
             source_id = item["source"]
             source = source_paths[source_id]
+            still = is_image_path(source)
             types = stream_types_by_source.get(source_id)
             if types is None:
-                types = stream_types(source)
+                types = {"video"} if still else stream_types(source)
                 stream_types_by_source[source_id] = types
+            if item.get("mute") and "video" in types:
+                types = types - {"audio"}
             segment_path = tmp_dir / f"{index:04d}_clip.mp4"
             args = (
                 _layered_segment_args(
@@ -450,6 +481,7 @@ def render_preview(edl_path: Path, out_path: Path | None = None, timeline_name: 
                     segment_path,
                     types,
                     item.get("transform"),
+                    still,
                 )
             )
             subprocess.run(args, check=True)

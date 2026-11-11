@@ -5,7 +5,7 @@ import importlib
 import sys
 from pathlib import Path
 
-from helpers.common import ensure_within, read_json, resolve_relative, safe_filename, seconds_to_frames, write_json
+from helpers.common import ensure_within, is_image_path, read_json, resolve_relative, safe_filename, seconds_to_frames, write_json
 from helpers.timing import range_effective_speed
 from helpers.transforms import resolve_transform
 from helpers.validate_edl import minimum_clip_duration, timeline_timing_issues, validate
@@ -81,6 +81,10 @@ def create_timelines_from_edl(project, resolve, edl: dict, footage_root: Path, *
             fail("Resolve scripting backend does not support retimed ranges yet; export FCPXML instead.")
         if any(item.get("visual_layers") for item in timeline_spec.get("ranges") or []):
             fail("Resolve scripting backend does not support visual_layers yet; export FCPXML instead.")
+        if any(item.get("mute") for item in timeline_spec.get("ranges") or []):
+            fail("Resolve scripting backend does not support muted ranges yet; export FCPXML instead.")
+        if any(is_image_path(path) for path in (timeline_spec.get("sources") or {}).values()):
+            fail("Resolve scripting backend does not support still images yet; export FCPXML instead.")
 
         requested_name = timeline_spec["name"]
         timeline_name = requested_name

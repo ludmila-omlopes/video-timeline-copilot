@@ -5,7 +5,7 @@ import json
 import subprocess
 from pathlib import Path
 
-from helpers.common import VIDEO_EXTENSIONS, write_json
+from helpers.common import IMAGE_EXTENSIONS, VIDEO_EXTENSIONS, write_json
 from helpers.media_tools import ffprobe_json
 from helpers.timecode import find_start_timecode
 
@@ -34,12 +34,30 @@ def ffprobe(path: Path) -> dict:
     return item
 
 
+def file_fingerprint(path: Path) -> dict:
+    """Size and modification time, used to notice a source that changed after it was analyzed."""
+    try:
+        stat = path.stat()
+    except OSError:
+        return {}
+    return {"size": stat.st_size, "mtime": round(stat.st_mtime, 3)}
+
+
 def iter_source_videos(root: Path, edit_dir: Path) -> list[Path]:
     """List source videos under root, excluding generated outputs and hidden directories."""
+    return iter_source_files(root, edit_dir, VIDEO_EXTENSIONS)
+
+
+def iter_source_images(root: Path, edit_dir: Path) -> list[Path]:
+    """List still images (title cards, photos) under root, with the same exclusions as videos."""
+    return iter_source_files(root, edit_dir, IMAGE_EXTENSIONS)
+
+
+def iter_source_files(root: Path, edit_dir: Path, extensions: set[str]) -> list[Path]:
     videos = []
     edit_dir = edit_dir.resolve()
     for path in sorted(root.rglob("*")):
-        if path.suffix.lower() not in VIDEO_EXTENSIONS:
+        if path.suffix.lower() not in extensions:
             continue
         resolved = path.resolve()
         if edit_dir == resolved or edit_dir in resolved.parents:
@@ -63,13 +81,25 @@ def main() -> None:
 
     for video in videos:
         try:
-            items.append(ffprobe(video))
+            items.append({**ffprobe(video), **file_fingerprint(video)})
         except (FileNotFoundError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
             items.append({"path": str(video), "error": str(exc)})
 
+    images = []
+    for image in iter_source_images(root, edit_dir):
+        entry = {"path": str(image), "name": image.stem, **file_fingerprint(image)}
+        try:
+            payload = ffprobe_json(image)
+            stream = next((s for s in payload.get("streams", []) if s.get("codec_type") == "video"), {})
+            entry["width"] = int(stream.get("width", 0) or 0)
+            entry["height"] = int(stream.get("height", 0) or 0)
+        except (FileNotFoundError, subprocess.CalledProcessError, json.JSONDecodeError) as exc:
+            entry["error"] = str(exc)
+        images.append(entry)
+
     out = edit_dir / "media_index.json"
-    write_json(out, {"root": str(root), "media": items})
-    print(f"indexed {len(items)} media file(s) -> {out}")
+    write_json(out, {"root": str(root), "media": items, "images": images})
+    print(f"indexed {len(items)} video(s) and {len(images)} image(s) -> {out}")
 
 
 if __name__ == "__main__":
